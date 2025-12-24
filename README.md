@@ -14,6 +14,7 @@ A modern, full-stack brokerage management system built with React, TypeScript, a
 - **Sign In**: Secure login with password protection
 - **User Management**: Store and manage users in MongoDB Atlas
 - **Role-Based Access**: Admin, Finance, Operations, and Viewer roles
+- **Data Isolation**: Strict hierarchy-based visibility (Users only see their own portfolio)
 - **Session Management**: Secure user sessions
 
 ### 📊 Dashboard & Analytics
@@ -41,8 +42,9 @@ A modern, full-stack brokerage management system built with React, TypeScript, a
 ### ⚙️ Settings
 - Global configuration
 - Sharing rules
-- Level-wise payout percentages
+- Level-wise payout percentages (Level 0-6 supported)
 - AMC and Scheme standardization
+- Bank Details management with Account Type selection
 
 ## 🚀 Live Demo
 
@@ -295,6 +297,12 @@ None at the moment! Report issues on GitHub.
 
 ## 📈 Version History
 
+- **v1.1.0** (2024-12-24)
+  - Added Level 0 Hierarchy
+  - Implemented Strict Data Isolation (RM-wise privacy)
+  - Added Account Type dropdown (Savings/Current/NRE/NRO)
+  - Restricted Dev Context Switcher to Admin only
+  - Updated configuration UI for all levels
 - **v1.0.0** (2024-12-24)
   - Initial release
   - Authentication system
