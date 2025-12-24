@@ -20,7 +20,8 @@ const MOCK_TEAM = [
             accountName: 'Frank Admin',
             accountNumber: '1122334455',
             bankName: 'HDFC Bank',
-            ifscCode: 'HDFC0001234'
+            ifscCode: 'HDFC0001234',
+            accountType: 'Savings'
         }
     }
 ];
@@ -30,12 +31,13 @@ const GLOBAL_CONFIG = {
     name: 'Default FY24 Structure',
     companyExpensePct: 15,
     levels: {
-        6: 40, // RM
-        5: 10, // ZM
-        4: 5,  // RH
-        3: 5,  // Partner
-        2: 5,  // Associate
-        1: 35  // Corp/House
+        6: 40,
+        5: 10,
+        4: 5,
+        3: 5,
+        2: 5,
+        1: 30,
+        0: 5
     },
     levelNames: {
         6: 'Relationship Manager (RM)',
@@ -43,7 +45,8 @@ const GLOBAL_CONFIG = {
         4: 'Regional Head (RH)',
         3: 'Partner',
         2: 'Associate',
-        1: 'Corporate / House'
+        1: 'Corporate',
+        0: 'Principal'
     },
     scope: 'GLOBAL'
 };
