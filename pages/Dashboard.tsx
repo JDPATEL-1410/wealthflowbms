@@ -32,11 +32,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
     // 1. Identify which clients belong to this user
     let myClientIds: string[] = [];
 
-    if (currentUser.role === Role.ADMIN || currentUser.level === 1) {
+    if (currentUser.role === Role.ADMIN) {
       // Admin sees everything
       myClientIds = clients.map(c => c.id);
     } else {
-      // Hierarchy based filter
+      // Hierarchy based filter - users only see clients mapped to them at THEIR level
       const levelKey = `level${currentUser.level}Id` as keyof typeof clients[0]['hierarchy'];
       myClientIds = clients
         .filter(c => c.hierarchy[levelKey] === currentUser.id)

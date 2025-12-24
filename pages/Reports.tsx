@@ -37,9 +37,9 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
 
     const { visibleTransactions, unmappedVisibleCount } = useMemo(() => {
         const myClientIds = clients.filter(c => {
-            if (isAdmin || currentUser.level === 1) return true;
-            const h = c.hierarchy;
-            return h.level6Id === currentUser.id || h.level5Id === currentUser.id || h.level4Id === currentUser.id || h.level3Id === currentUser.id || h.level2Id === currentUser.id;
+            if (isAdmin) return true;
+            const levelKey = `level${currentUser.level}Id` as keyof typeof c.hierarchy;
+            return c.hierarchy[levelKey] === currentUser.id;
         }).map(c => c.id);
 
         let unmappedCount = 0;
