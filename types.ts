@@ -33,6 +33,14 @@ export interface BankDetails {
   branch?: string;
 }
 
+export interface Address {
+  street: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+}
+
 export interface TeamMember {
   id: string;
   name: string;
@@ -42,6 +50,7 @@ export interface TeamMember {
   email?: string;
   password?: string; // Mock password
   bankDetails?: BankDetails;
+  address?: Address;
   customLevels?: { // User-specific sharing override
     1?: number;
     2?: number;

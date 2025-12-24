@@ -46,5 +46,5 @@ Thumbs.db
 *.mongodb
 
 # Local development
-server.js
-seed.js
+# server.js
+# seed.js

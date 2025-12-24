@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Download, FileText, Briefcase, Filter, Layers, DollarSign, CheckCircle, Clock, AlertCircle, Calculator, X, Calendar, Search, RefreshCw, ChevronDown, ChevronUp, Info, Building2 } from 'lucide-react';
+import { Download, FileText, Briefcase, Filter, Layers, IndianRupee, CheckCircle, Clock, AlertCircle, Calculator, X, Calendar, Search, RefreshCw, ChevronDown, ChevronUp, Info, Building2 } from 'lucide-react';
 import { TeamMember, Role, InvoiceStatus, PayoutInvoice, TransactionStatus, BrokerageTransaction } from '../types';
 import { useData } from '../contexts/DataContext';
 import jsPDF from 'jspdf';
@@ -256,8 +256,8 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={`pb-4 text-sm font-bold transition-all border-b-2 px-1 whitespace-nowrap ${activeTab === tab.id
-                                    ? 'border-blue-600 text-blue-600'
-                                    : 'border-transparent text-slate-500 hover:text-slate-900'
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-slate-500 hover:text-slate-900'
                                 }`}
                         >
                             {tab.label}
@@ -271,7 +271,7 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                     <div className="p-8">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                             <div className="p-6 bg-blue-50 rounded-xl border border-blue-100 flex items-center space-x-4">
-                                <div className="p-3 bg-blue-600 rounded-lg"><DollarSign className="w-6 h-6 text-white" /></div>
+                                <div className="p-3 bg-blue-600 rounded-lg"><IndianRupee className="w-6 h-6 text-white" /></div>
                                 <div>
                                     <p className="text-xs font-bold text-blue-600 uppercase">Brokerage</p>
                                     <p className="text-2xl font-black text-blue-900">₹ {totals.gross.toLocaleString()}</p>
