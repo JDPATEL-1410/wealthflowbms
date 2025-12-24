@@ -2,19 +2,20 @@
 import { Client, ImportBatch, SharingConfig, TeamMember, TransactionSource, TransactionStatus, BrokerageTransaction, Role, PayoutInvoice, InvoiceStatus } from '../types';
 
 export const MOCK_TEAM: TeamMember[] = [
-  { 
-    id: 'tm6', 
-    name: 'Frank Admin', 
-    code: 'AD001', 
-    role: Role.ADMIN, 
-    level: 1, 
+  {
+    id: 'tm6',
+    name: 'Frank Admin',
+    code: 'AD001',
+    role: Role.ADMIN,
+    level: 1,
     email: 'admin@wealthflow.com',
     password: 'admin123',
-    bankDetails: { 
-      accountName: 'Frank Admin', 
-      accountNumber: '1122334455', 
-      bankName: 'HDFC Bank', 
-      ifscCode: 'HDFC0001234' 
+    bankDetails: {
+      accountName: 'Frank Admin',
+      accountNumber: '1122334455',
+      bankName: 'HDFC Bank',
+      ifscCode: 'HDFC0001234',
+      accountType: 'Savings'
     }
   }
 ];

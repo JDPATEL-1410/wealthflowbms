@@ -16,7 +16,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
 
     const [profileForm, setProfileForm] = useState<Partial<TeamMember>>({});
     const [bankForm, setBankForm] = useState<BankDetails>({
-        accountName: '', accountNumber: '', bankName: '', ifscCode: '', branch: ''
+        accountName: '', accountNumber: '', bankName: '', ifscCode: '', accountType: 'Savings', branch: ''
     });
     const [addressForm, setAddressForm] = useState<Address>({
         street: '', city: '', state: '', pincode: '', country: ''
@@ -218,6 +218,19 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                                         placeholder="HDFC0001234"
                                         className="w-full border border-slate-200 p-3 rounded-xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none transition uppercase"
                                     />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Account Type</label>
+                                    <select
+                                        value={bankForm.accountType}
+                                        onChange={e => setBankForm({ ...bankForm, accountType: e.target.value as any })}
+                                        className="w-full border border-slate-200 p-3 rounded-xl mt-1 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white font-medium"
+                                    >
+                                        <option value="Savings">Savings Account</option>
+                                        <option value="Current">Current Account</option>
+                                        <option value="NRE">NRE Account</option>
+                                        <option value="NRO">NRO Account</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>

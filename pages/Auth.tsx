@@ -90,7 +90,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     accountName: signupName,
                     accountNumber: '',
                     bankName: '',
-                    ifscCode: ''
+                    ifscCode: '',
+                    accountType: 'Savings'
                 }
             };
 

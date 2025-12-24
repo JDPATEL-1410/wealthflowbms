@@ -30,6 +30,7 @@ export interface BankDetails {
   accountNumber: string;
   bankName: string;
   ifscCode: string;
+  accountType: 'Savings' | 'Current' | 'NRE' | 'NRO';
   branch?: string;
 }
 
