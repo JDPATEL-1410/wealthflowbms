@@ -74,8 +74,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
     const handleSelectUserForOverride = (member: TeamMember) => {
         setSelectedUserForOverride(member);
         const initialLevels: Record<number, number> = {};
-        [1, 2, 3, 4, 5, 6].forEach(l => {
-            initialLevels[l] = member.customLevels?.[l as keyof typeof member.customLevels] ?? globalConfig.levels[l as keyof typeof globalConfig.levels];
+        [0, 1, 2, 3, 4, 5, 6].forEach(l => {
+            initialLevels[l] = member.customLevels?.[l as keyof typeof member.customLevels] ?? globalConfig.levels[l as keyof typeof globalConfig.levels as keyof typeof member.customLevels] ?? 0;
         });
         setUserOverrideLevels(initialLevels);
     };
@@ -322,12 +322,12 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                                 <div className={`px-3 py-1 rounded-full text-sm font-bold ${totalShare === 100 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>Total Allocation: {totalShare}%</div>
                             </div>
                             <div className="space-y-3">
-                                {[6, 5, 4, 3, 2, 1].map((lvl) => (
+                                {[6, 5, 4, 3, 2, 1, 0].map((lvl) => (
                                     <div key={lvl} className="flex items-center p-3 bg-slate-50 rounded-lg border border-slate-100">
                                         <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm mr-4 bg-blue-100 text-blue-700 shadow-sm">L{lvl}</div>
                                         <input type="text" value={editConfig.levelNames?.[lvl as keyof typeof editConfig.levelNames] || ''} onChange={(e) => handleNameChange(lvl, e.target.value)} className="flex-1 bg-transparent border-b border-dashed border-slate-300 mr-4 outline-none text-sm font-medium" />
                                         <div className="flex items-center bg-white border rounded-lg overflow-hidden shadow-sm">
-                                            <input type="number" value={editConfig.levels[lvl as keyof typeof editConfig.levels]} onChange={(e) => handleLevelChange(lvl, e.target.value)} className="w-20 p-2 text-right text-sm font-bold" />
+                                            <input type="number" value={editConfig.levels[lvl as keyof typeof editConfig.levels] || 0} onChange={(e) => handleLevelChange(lvl, e.target.value)} className="w-20 p-2 text-right text-sm font-bold" />
                                             <span className="px-2 text-slate-400 bg-slate-50 border-l">%</span>
                                         </div>
                                     </div>
@@ -346,8 +346,8 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                             <div className="space-y-3 pt-4 border-t border-slate-700">
                                 <div className="flex justify-between items-center"><span className="text-slate-400 text-sm">Retention ({editConfig.companyExpensePct}%)</span><span className="text-red-400 font-mono">₹{calculationPreview.expenseAmount.toFixed(2)}</span></div>
                                 <div className="flex justify-between items-center font-black text-lg py-2 border-y border-slate-800"><span className="text-emerald-400">Net Payout Pool</span><span className="font-mono text-emerald-400">₹{calculationPreview.netPool.toFixed(2)}</span></div>
-                                {[6, 5, 4, 3, 2, 1].map(lvl => (
-                                    <div key={lvl} className="flex justify-between items-center text-sm"><span className="text-slate-400">{editConfig.levelNames[lvl as keyof typeof editConfig.levelNames]}</span><span className="font-mono">₹{calculationPreview.levelPayouts[lvl as keyof typeof editConfig.levels].toFixed(2)}</span></div>
+                                {[6, 5, 4, 3, 2, 1, 0].map(lvl => (
+                                    <div key={lvl} className="flex justify-between items-center text-sm"><span className="text-slate-400">{editConfig.levelNames[lvl as keyof typeof editConfig.levelNames]}</span><span className="font-mono">₹{(calculationPreview.levelPayouts[lvl as keyof typeof editConfig.levels] || 0).toFixed(2)}</span></div>
                                 ))}
                             </div>
                         </div>
@@ -408,7 +408,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-4">
                                             <h4 className="font-black text-xs uppercase text-slate-400 tracking-widest">Percentage Distribution</h4>
-                                            {[6, 5, 4, 3, 2, 1].map(lvl => (
+                                            {[6, 5, 4, 3, 2, 1, 0].map(lvl => (
                                                 <div key={lvl} className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
                                                     <div>
                                                         <div className="font-bold text-slate-900">Level {lvl}</div>
@@ -436,7 +436,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                                         <div className="space-y-6">
                                             <h4 className="font-black text-xs uppercase text-slate-400 tracking-widest">Active Status</h4>
                                             <div className="space-y-4">
-                                                {[6, 5, 4, 3, 2, 1].map(lvl => (
+                                                {[6, 5, 4, 3, 2, 1, 0].map(lvl => (
                                                     <div key={lvl} className="flex items-center space-x-3">
                                                         <div className={`w-3 h-3 rounded-full ${userOverrideLevels[lvl] > 0 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-300'}`}></div>
                                                         <span className={`text-sm font-medium ${userOverrideLevels[lvl] > 0 ? 'text-slate-900' : 'text-slate-400 italic line-through'}`}>

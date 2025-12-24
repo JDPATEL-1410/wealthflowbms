@@ -27,12 +27,13 @@ export const GLOBAL_CONFIG: SharingConfig = {
   name: 'Default FY24 Structure',
   companyExpensePct: 15,
   levels: {
-    6: 40, // RM
-    5: 10, // ZM
-    4: 5,  // RH
-    3: 5,  // Partner
-    2: 5,  // Associate
-    1: 35  // Corp/House
+    6: 40,
+    5: 10,
+    4: 5,
+    3: 5,
+    2: 5,
+    1: 30,
+    0: 5
   },
   levelNames: {
     6: 'Relationship Manager (RM)',
@@ -40,7 +41,8 @@ export const GLOBAL_CONFIG: SharingConfig = {
     4: 'Regional Head (RH)',
     3: 'Partner',
     2: 'Associate',
-    1: 'Corporate / House'
+    1: 'Corporate',
+    0: 'Principal'
   },
   scope: 'GLOBAL'
 };

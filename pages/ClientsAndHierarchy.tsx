@@ -80,7 +80,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
   }, [clients, searchTerm, currentUser, isAdmin]);
 
   const teamByLevel = useMemo(() => {
-    const levels: Record<number, TeamMember[]> = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+    const levels: Record<number, TeamMember[]> = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
     team.forEach(m => {
       if (levels[m.level]) levels[m.level].push(m);
     });
@@ -353,7 +353,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
               <button onClick={() => setIsMappingModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><X className="w-5 h-5 text-slate-400" /></button>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50">
-              {[6, 5, 4, 3, 2, 1].map((level) => (
+              {[6, 5, 4, 3, 2, 1, 0].map((level) => (
                 <div key={level} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">{getLevelLabel(level)}</label>
                   <select
@@ -410,7 +410,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                 <div className="col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hierarchy Layer</label>
                   <select value={memberForm.level} onChange={e => setMemberForm({ ...memberForm, level: Number(e.target.value) })} className="w-full border border-slate-200 p-3 rounded-xl mt-1.5 font-bold focus:ring-2 focus:ring-blue-500 transition bg-white">
-                    {[1, 2, 3, 4, 5, 6].map(l => <option key={l} value={l}>Level {l}</option>)}
+                    {[0, 1, 2, 3, 4, 5, 6].map(l => <option key={l} value={l}>Level {l}</option>)}
                   </select>
                 </div>
               </div>

@@ -9,7 +9,7 @@ import { BrokerageTransaction, PayoutBreakdown, SharingConfig, TransactionStatus
 export const calculatePayout = (gross: number, config: SharingConfig): PayoutBreakdown => {
   // 1. Calculate Company Expense
   const expenseAmount = Math.round((gross * (config.companyExpensePct / 100)) * 100) / 100;
-  
+
   // 2. Determine Net Pool
   const netPool = Math.round((gross - expenseAmount) * 100) / 100;
 
@@ -17,20 +17,16 @@ export const calculatePayout = (gross: number, config: SharingConfig): PayoutBre
   const payouts: any = {};
   let distributedTotal = 0;
 
-  // Levels 2-6 (Calculate normally)
-  for (let i = 2; i <= 6; i++) {
+  // Levels 2-6 and 0 (Calculate normally)
+  for (let i = 0; i <= 6; i++) {
+    if (i === 1) continue; // Skip L1 for remainder
     const pct = config.levels[i as keyof typeof config.levels];
-    const amount = Math.floor((netPool * (pct / 100)) * 100) / 100; // Floor to 2 decimals to be safe
+    const amount = Math.floor((netPool * (pct / 100)) * 100) / 100;
     payouts[i] = amount;
     distributedTotal += amount;
   }
 
   // Level 1 gets the remainder to handle rounding issues perfectly
-  // (Or calculates normally and adds diff. Here we assign remainder for precision balance)
-  const level1Pct = config.levels[1];
-  const theoreticalL1 = (netPool * (level1Pct / 100));
-  
-  // Ensure sum equals NetPool exactly
   payouts[1] = Math.round((netPool - distributedTotal) * 100) / 100;
 
   return {
@@ -38,6 +34,7 @@ export const calculatePayout = (gross: number, config: SharingConfig): PayoutBre
     expenseAmount,
     netPool,
     levelPayouts: {
+      0: payouts[0],
       1: payouts[1],
       2: payouts[2],
       3: payouts[3],
@@ -49,12 +46,12 @@ export const calculatePayout = (gross: number, config: SharingConfig): PayoutBre
 };
 
 export const runBatchCalculation = (
-  transactions: BrokerageTransaction[], 
+  transactions: BrokerageTransaction[],
   config: SharingConfig
 ): BrokerageTransaction[] => {
   return transactions.map(tx => {
     if (!tx.mappedClientId) return tx; // Skip unmapped
-    
+
     const breakdown = calculatePayout(tx.grossAmount, config);
     return {
       ...tx,

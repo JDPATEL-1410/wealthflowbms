@@ -53,6 +53,7 @@ export interface TeamMember {
   bankDetails?: BankDetails;
   address?: Address;
   customLevels?: { // User-specific sharing override
+    0?: number;
     1?: number;
     2?: number;
     3?: number;
@@ -67,6 +68,7 @@ export interface SharingConfig {
   name: string;
   companyExpensePct: number; // e.g. 15 for 15%
   levels: {
+    0: number;
     1: number;
     2: number;
     3: number;
@@ -76,6 +78,7 @@ export interface SharingConfig {
   };
   // Added Level 6 to levelNames to match business logic and mock data
   levelNames: {
+    0: string;
     1: string;
     2: string;
     3: string;
@@ -93,6 +96,7 @@ export interface Client {
   name: string;
   folios: string[];
   hierarchy: {
+    level0Id: string;
     level1Id: string;
     level2Id: string;
     level3Id: string;
@@ -112,6 +116,7 @@ export interface PayoutBreakdown {
   expenseAmount: number;
   netPool: number;
   levelPayouts: {
+    0: number;
     1: number;
     2: number;
     3: number;

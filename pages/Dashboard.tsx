@@ -74,9 +74,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser }) => {
 
     // 5. Dynamic Payout Data based on Global Config
     const payoutChartData = [
-      { name: `L6 (${globalConfig.levelNames[6]})`, value: globalConfig.levels[6] },
-      { name: `L5 (${globalConfig.levelNames[5]})`, value: globalConfig.levels[5] },
+      { name: `L0 (${globalConfig.levelNames[0]})`, value: globalConfig.levels[0] },
       { name: `L1 (${globalConfig.levelNames[1]})`, value: globalConfig.levels[1] },
+      { name: `L6 (${globalConfig.levelNames[6]})`, value: globalConfig.levels[6] },
       { name: 'Expense', value: globalConfig.companyExpensePct },
     ];
 
