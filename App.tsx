@@ -18,22 +18,51 @@ const AppContent: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<TeamMember | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('wealthflow_currentUser');
+    const savedLoginState = localStorage.getItem('wealthflow_isLoggedIn');
+
+    if (savedUser && savedLoginState === 'true') {
+      try {
+        const user = JSON.parse(savedUser);
+        setCurrentUser(user);
+        setIsLoggedIn(true);
+      } catch (e) {
+        console.error('Failed to restore session', e);
+        localStorage.removeItem('wealthflow_currentUser');
+        localStorage.removeItem('wealthflow_isLoggedIn');
+      }
+    }
+  }, []);
+
+  // Sync currentUser with team updates
   useEffect(() => {
     if (currentUser) {
       const updatedUser = team.find(t => t.id === currentUser.id);
-      if (updatedUser) setCurrentUser(updatedUser);
+      if (updatedUser) {
+        setCurrentUser(updatedUser);
+        // Update localStorage with latest user data
+        localStorage.setItem('wealthflow_currentUser', JSON.stringify(updatedUser));
+      }
     }
-  }, [team]);
+  }, [team, currentUser]);
 
   const handleLogin = (user: TeamMember) => {
     setCurrentUser(user);
     setIsLoggedIn(true);
     setActivePage('dashboard');
+    // Persist to localStorage
+    localStorage.setItem('wealthflow_currentUser', JSON.stringify(user));
+    localStorage.setItem('wealthflow_isLoggedIn', 'true');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
     setIsLoggedIn(false);
+    // Clear localStorage
+    localStorage.removeItem('wealthflow_currentUser');
+    localStorage.removeItem('wealthflow_isLoggedIn');
   };
 
   if (loading) {
