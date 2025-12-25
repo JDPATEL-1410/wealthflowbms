@@ -26,21 +26,21 @@
 ## 🚀 Quick Start
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (from root)
 npm install
 
 # 2. Set up environment variables
-# Create .env.local file with your MongoDB connection string
+# Create .env.local file in the root with your MongoDB connection string
 echo "MONGODB_URI=your_mongodb_connection_string" > .env.local
 
 # 3. Initialize database
 npm run init-db
 
-# 4. Start API server (Terminal 1)
-npm run dev:api
+# 4. Start Backend & API server (Terminal 1)
+npm run backend
 
-# 5. Start frontend (Terminal 2)
-npm run dev
+# 5. Start Frontend dev server (Terminal 2)
+npm run frontend
 ```
 
 **Access the app:** Open your browser to `http://localhost:5173` (Vite will show the exact URL)

@@ -1,0 +1,19 @@
+{
+    "name": "wealthflow-backend",
+    "private": true,
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "start": "node server.js",
+        "init-db": "node scripts/init-database.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.5",
+        "express": "^5.2.1",
+        "mongodb": "^6.5.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.24",
+        "vercel": "^50.1.3"
+    }
+}
