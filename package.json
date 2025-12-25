@@ -11,5 +11,8 @@
     "init-db": "npm run init-db --workspace=backend",
     "build": "npm run build --workspace=frontend",
     "install-all": "npm install"
+  },
+  "dependencies": {
+    "mongodb": "^6.5.0"
   }
 }
