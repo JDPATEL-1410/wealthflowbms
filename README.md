@@ -36,11 +36,14 @@ echo "MONGODB_URI=your_mongodb_connection_string" > .env.local
 # 3. Initialize database
 npm run init-db
 
-# 4. Start development server
+# 4. Start API server (Terminal 1)
+npm run dev:api
+
+# 5. Start frontend (Terminal 2)
 npm run dev
 ```
 
-**Access the app:** Open your browser and navigate to the URL shown in the terminal (usually `http://localhost:3000`)
+**Access the app:** Open your browser to `http://localhost:5173` (Vite will show the exact URL)
 
 ---
 
@@ -372,6 +375,7 @@ npm run dev  # Use this, not npm run dev:vite
 ```bash
 git pull origin main
 ```
+
 
 ### Issue: User logged out on refresh
 

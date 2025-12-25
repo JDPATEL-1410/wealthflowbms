@@ -1,22 +1,26 @@
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import vercel from 'vite-plugin-vercel';
 
 export default defineConfig({
-  plugins: [react(), vercel()],
-  base: '/', // Standard for Vercel root domain deployment
+  plugins: [react()],
+  base: '/',
   build: {
     outDir: 'dist',
     sourcemap: false
   },
-  vercel: {
-    // Enable serverless functions in development
-    rewrites: [
-      {
-        source: '/api/(.*)',
-        destination: '/api/$1'
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        configure: (proxy, options) => {
+          // Fallback: serve mock data if API server not running
+          proxy.on('error', (err, req, res) => {
+            console.warn('API proxy error - API server may not be running');
+          });
+        }
       }
-    ]
+    }
   }
 });
