@@ -79,8 +79,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         (r.status === 'fulfilled' && Array.isArray(r.value)) ? r.value : []
       );
 
+      // Only fallback to Mock data if the database fetch strictly returned an error/rejection,
+      // NOT if it successfully returned an empty list.
+      if (results[1].status === 'fulfilled') {
+        setTeam(t);
+      } else {
+        console.warn("Database team fetch failed, using mock fallback");
+        setTeam(MOCK_TEAM);
+      }
+
       setClients(c);
-      setTeam(t.length > 0 ? t : MOCK_TEAM);
       setBatches(b);
       setTransactions(tx);
       setAmcMappings(amc);

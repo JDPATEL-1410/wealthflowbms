@@ -23,13 +23,21 @@ async function connectToDatabase() {
         return { client: cachedClient, db: cachedDb };
     }
 
-    const client = await MongoClient.connect(uri);
-    const db = client.db('wealthflow');
+    try {
+        const client = await MongoClient.connect(uri, {
+            connectTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
+        });
+        const db = client.db('wealthflow');
 
-    cachedClient = client;
-    cachedDb = db;
+        cachedClient = client;
+        cachedDb = db;
 
-    return { client, db };
+        return { client, db };
+    } catch (error) {
+        console.error("Local MongoDB Connection Error:", error);
+        throw error;
+    }
 }
 
 const VALID_COLLECTIONS = [
