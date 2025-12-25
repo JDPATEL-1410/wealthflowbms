@@ -20,6 +20,8 @@ const AppContent: React.FC = () => {
 
   // Restore user session from localStorage on app load
   useEffect(() => {
+    if (sessionRestored) return;
+
     const savedUser = localStorage.getItem('wealthflow_user');
     if (savedUser && !loading && team.length > 0) {
       try {
@@ -28,9 +30,8 @@ const AppContent: React.FC = () => {
         const userExists = team.find(t => t.id === parsedUser.id);
         if (userExists) {
           setCurrentUser(userExists);
-          setContextUser(userExists);
+          setContextUser(userExists); // This triggers fetchData in DataContext
           setIsLoggedIn(true);
-          refreshDashboard(userExists);
         } else {
           // User no longer exists, clear session
           localStorage.removeItem('wealthflow_user');
@@ -43,7 +44,7 @@ const AppContent: React.FC = () => {
     } else if (!loading) {
       setSessionRestored(true);
     }
-  }, [loading, team]);
+  }, [loading, team, sessionRestored, setContextUser]);
 
   // Update current user when team data changes
   useEffect(() => {
