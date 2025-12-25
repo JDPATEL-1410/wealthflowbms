@@ -1,8 +1,9 @@
 // MongoDB Database Initialization Script
-// Run this to create all required collections in MongoDB
+// Run this to create all required collections and seed initial data in MongoDB
 
 import { MongoClient } from 'mongodb';
 
+// Using the provided MongoDB Atlas connection string
 const uri = 'mongodb+srv://wealthflow_admin:wealthflow123@wealthflow-cluster.e25dw6i.mongodb.net/?appName=wealthflow-cluster';
 
 const COLLECTIONS = [
@@ -94,20 +95,76 @@ async function initializeDatabase() {
         await db.collection('invoices').createIndex({ status: 1 });
         console.log('✓ invoices - Indexes created');
 
+        // Seed initial data if collections are empty
+        console.log('\n🌱 Seeding initial data...\n');
+
+        // Seed Team (Admin)
+        const teamCount = await db.collection('team').countDocuments();
+        if (teamCount === 0) {
+            await db.collection('team').insertOne({
+                id: 'admin_root',
+                name: 'System Administrator',
+                code: 'ADMIN-001',
+                role: 'ADMIN',
+                level: 1,
+                email: 'admin@wealthflow.com',
+                password: 'admin',
+                bankDetails: {
+                    accountName: '',
+                    accountNumber: '',
+                    bankName: '',
+                    ifscCode: ''
+                },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
+            console.log('✓ team - Default admin seeded');
+        } else {
+            console.log('✓ team - Data already exists');
+        }
+
+        // Seed Config
+        const configCount = await db.collection('config').countDocuments();
+        if (configCount === 0) {
+            await db.collection('config').insertOne({
+                id: 'global_config',
+                name: 'Standard Payout Rules',
+                companyExpensePct: 15,
+                levels: {
+                    1: 15, 2: 15, 3: 15, 4: 15, 5: 15, 6: 5, 0: 20
+                },
+                levelNames: {
+                    1: 'Corporate House', 2: 'Partner Level 2', 3: 'Regional Level 3',
+                    4: 'Zonal Level 4', 5: 'Manager Level 5', 6: 'Relationship Manager (L6)',
+                    0: 'Super Holding'
+                },
+                scope: 'GLOBAL',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            });
+            console.log('✓ config - Default config seeded');
+        } else {
+            console.log('✓ config - Data already exists');
+        }
+
         console.log('\n✅ Database initialization complete!\n');
         console.log('📋 Summary:');
         console.log('   Database: wealthflow');
         console.log('   Collections: 8');
         console.log('   Indexes: Created for optimal performance');
+        console.log('   Seed Data: Admin user (admin@wealthflow.com) created');
         console.log('\n🎉 Your MongoDB database is ready to use!\n');
 
         // Display collection stats
         console.log('📊 Collection Statistics:\n');
         for (const collectionName of COLLECTIONS) {
             const count = await db.collection(collectionName).countDocuments();
-            console.log(`   ${collectionName}: ${count} documents`);
+            const indexes = await db.collection(collectionName).indexes();
+            console.log(`   ${collectionName}:`);
+            console.log(`      Documents: ${count}`);
+            console.log(`      Indexes: ${indexes.length}`);
+            console.log('');
         }
-        console.log('');
 
     } catch (error) {
         console.error('❌ Error initializing database:', error);
