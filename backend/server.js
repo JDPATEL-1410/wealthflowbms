@@ -1,13 +1,14 @@
-// Development API Server for WealthFlow BMS
-// This runs alongside Vite during local development
-// In production, Vercel serverless functions handle API routes
-
 import express from 'express';
 import cors from 'cors';
 import { MongoClient } from 'mongodb';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
@@ -29,13 +30,11 @@ async function connectToDatabase() {
             socketTimeoutMS: 45000,
         });
         const db = client.db('wealthflow');
-
         cachedClient = client;
         cachedDb = db;
-
         return { client, db };
     } catch (error) {
-        console.error("Local MongoDB Connection Error:", error);
+        console.error("MongoDB Connection Error:", error);
         throw error;
     }
 }
@@ -50,14 +49,10 @@ app.get('/api/data', async (req, res) => {
     try {
         const { db } = await connectToDatabase();
         const { type, userId, isAdmin } = req.query;
-
         if (!type || !VALID_COLLECTIONS.includes(type)) {
             return res.status(400).json({ error: 'Invalid or missing collection type' });
         }
-
         let filter = {};
-
-        // Apply user-specific filtering for non-admin users
         if (isAdmin !== 'true' && userId) {
             switch (type) {
                 case 'clients':
@@ -98,11 +93,9 @@ app.get('/api/data', async (req, res) => {
                     filter = {};
             }
         }
-
         const data = await db.collection(type).find(filter).toArray();
         res.status(200).json(data || []);
     } catch (error) {
-        console.error('GET /api/data error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -111,46 +104,31 @@ app.post('/api/data', async (req, res) => {
     try {
         const { db } = await connectToDatabase();
         const { collection, payload, upsertField } = req.body;
-
         if (!collection || !VALID_COLLECTIONS.includes(collection) || !payload) {
             return res.status(400).json({ error: 'Invalid collection or missing payload' });
         }
-
         const now = new Date().toISOString();
         const filterKey = upsertField || 'id';
-
         if (Array.isArray(payload)) {
-            if (payload.length === 0) return res.status(200).json({ success: true, count: 0 });
-
             const operations = payload.map(item => ({
                 updateOne: {
                     filter: { [filterKey]: item[filterKey] },
-                    update: {
-                        $set: { ...item, updatedAt: now },
-                        $setOnInsert: { createdAt: now }
-                    },
+                    update: { $set: { ...item, updatedAt: now }, $setOnInsert: { createdAt: now } },
                     upsert: true
                 }
             }));
-
             const result = await db.collection(collection).bulkWrite(operations);
             res.status(200).json({ success: true, count: result.upsertedCount + result.modifiedCount });
         } else {
             const filterValue = payload[filterKey] || payload.id || payload._id;
-            if (!filterValue) return res.status(400).json({ error: 'Payload missing identifying key (id)' });
-
             await db.collection(collection).updateOne(
                 { [filterKey]: filterValue },
-                {
-                    $set: { ...payload, updatedAt: now },
-                    $setOnInsert: { createdAt: now }
-                },
+                { $set: { ...payload, updatedAt: now }, $setOnInsert: { createdAt: now } },
                 { upsert: true }
             );
-            res.status(200).json({ success: true, timestamp: now });
+            res.status(200).json({ success: true });
         }
     } catch (error) {
-        console.error('POST /api/data error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -159,34 +137,28 @@ app.delete('/api/data', async (req, res) => {
     try {
         const { db } = await connectToDatabase();
         const { action, type, id } = req.query;
-
         if (action === 'reset') {
-            for (const col of VALID_COLLECTIONS) {
-                await db.collection(col).deleteMany({});
-            }
+            for (const col of VALID_COLLECTIONS) await db.collection(col).deleteMany({});
             return res.status(200).json({ success: true });
         }
-
         if (type && id && VALID_COLLECTIONS.includes(type)) {
             await db.collection(type).deleteOne({ id: id });
             return res.status(200).json({ success: true });
         }
-
-        res.status(400).json({ error: 'Invalid action or missing parameters' });
+        res.status(400).json({ error: 'Invalid parameters' });
     } catch (error) {
-        console.error('DELETE /api/data error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', message: 'WealthFlow API Server Running' });
+// SERVE FRONTEND (Production)
+const frontendPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendPath));
+
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-// Start server
 app.listen(PORT, () => {
-    console.log(`\n🚀 WealthFlow API Server running on http://localhost:${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/health`);
-    console.log(`🔗 API endpoint: http://localhost:${PORT}/api/data\n`);
+    console.log(`🚀 Unified WealthFlow Server running on port ${PORT}`);
 });
