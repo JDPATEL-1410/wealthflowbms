@@ -214,13 +214,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteBatch = (batchId: string) => {
-    // Remove batch from local state
+    // Step 1: Find all transactions from this batch to identify affected clients
+    const transactionsToDelete = transactions.filter(t => t.batchId === batchId);
+    const affectedClientIds = [...new Set(transactionsToDelete.map(tx => tx.mappedClientId).filter(Boolean))];
+
+    // Step 2: Remove batch from local state
     setBatches(prev => prev.filter(b => b.id !== batchId));
 
-    // Remove all transactions associated with this batch from local state
+    // Step 3: Remove all transactions associated with this batch from local state
     setTransactions(prev => prev.filter(t => t.batchId !== batchId));
 
-    // Delete from database (backend will cascade delete transactions)
+    // Step 4: Remove orphaned auto-created clients
+    // Only remove clients that were auto-created and have no other transactions
+    setClients(prev => {
+      return prev.filter(client => {
+        // Keep manually created clients
+        if (!client.id.startsWith('c_auto_')) return true;
+
+        // Keep auto-created clients that are affected but have other transactions
+        if (affectedClientIds.includes(client.id)) {
+          const hasOtherTransactions = transactions.some(
+            tx => tx.mappedClientId === client.id && tx.batchId !== batchId
+          );
+          return hasOtherTransactions;
+        }
+
+        // Keep clients not affected by this batch
+        return true;
+      });
+    });
+
+    // Step 5: Delete from database (backend will cascade delete transactions and orphaned clients)
     deleteFromDb('batches', batchId);
   };
 

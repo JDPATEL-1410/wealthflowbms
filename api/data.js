@@ -166,11 +166,41 @@ export default async function handler(req, res) {
                 const id = query.id;
 
                 if (type && id && VALID_COLLECTIONS.includes(type)) {
-                    // CASCADE DELETE: If deleting a batch, also delete all associated transactions
+                    // COMPREHENSIVE CASCADE DELETE for batches
                     if (type === 'batches') {
-                        // First delete all transactions associated with this batch
-                        const deleteResult = await db.collection('transactions').deleteMany({ batchId: id });
-                        console.log(`Cascade delete: Removed ${deleteResult.deletedCount} transactions for batch ${id}`);
+                        console.log(`Starting cascade delete for batch ${id}...`);
+
+                        // Step 1: Get all transactions from this batch to find affected clients
+                        const transactionsToDelete = await db.collection('transactions').find({ batchId: id }).toArray();
+                        const affectedClientIds = [...new Set(transactionsToDelete.map(tx => tx.mappedClientId).filter(Boolean))];
+
+                        console.log(`Found ${transactionsToDelete.length} transactions affecting ${affectedClientIds.length} clients`);
+
+                        // Step 2: Delete all transactions from this batch
+                        const txDeleteResult = await db.collection('transactions').deleteMany({ batchId: id });
+                        console.log(`Deleted ${txDeleteResult.deletedCount} transactions`);
+
+                        // Step 3: Find and delete orphaned auto-created clients
+                        // Only delete clients that:
+                        // - Were auto-created (id starts with 'c_auto_')
+                        // - Have NO remaining transactions in ANY other batch
+                        let orphanedClientsDeleted = 0;
+                        for (const clientId of affectedClientIds) {
+                            // Check if this is an auto-created client
+                            if (clientId.startsWith('c_auto_')) {
+                                // Check if this client has any remaining transactions
+                                const remainingTxCount = await db.collection('transactions').countDocuments({ mappedClientId: clientId });
+
+                                if (remainingTxCount === 0) {
+                                    // No transactions left, safe to delete
+                                    await db.collection('clients').deleteOne({ id: clientId });
+                                    orphanedClientsDeleted++;
+                                    console.log(`Deleted orphaned client ${clientId}`);
+                                }
+                            }
+                        }
+
+                        console.log(`Cascade delete summary: ${txDeleteResult.deletedCount} transactions, ${orphanedClientsDeleted} orphaned clients`);
                     }
 
                     // Then delete the main record

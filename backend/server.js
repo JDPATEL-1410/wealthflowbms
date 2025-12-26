@@ -142,11 +142,36 @@ app.delete('/api/data', async (req, res) => {
             return res.status(200).json({ success: true });
         }
         if (type && id && VALID_COLLECTIONS.includes(type)) {
-            // CASCADE DELETE: If deleting a batch, also delete all associated transactions
+            // COMPREHENSIVE CASCADE DELETE for batches
             if (type === 'batches') {
-                const deleteResult = await db.collection('transactions').deleteMany({ batchId: id });
-                console.log(`Cascade delete: Removed ${deleteResult.deletedCount} transactions for batch ${id}`);
+                console.log(`Starting cascade delete for batch ${id}...`);
+
+                // Step 1: Get all transactions from this batch to find affected clients
+                const transactionsToDelete = await db.collection('transactions').find({ batchId: id }).toArray();
+                const affectedClientIds = [...new Set(transactionsToDelete.map(tx => tx.mappedClientId).filter(Boolean))];
+
+                console.log(`Found ${transactionsToDelete.length} transactions affecting ${affectedClientIds.length} clients`);
+
+                // Step 2: Delete all transactions from this batch
+                const txDeleteResult = await db.collection('transactions').deleteMany({ batchId: id });
+                console.log(`Deleted ${txDeleteResult.deletedCount} transactions`);
+
+                // Step 3: Find and delete orphaned auto-created clients
+                let orphanedClientsDeleted = 0;
+                for (const clientId of affectedClientIds) {
+                    if (clientId.startsWith('c_auto_')) {
+                        const remainingTxCount = await db.collection('transactions').countDocuments({ mappedClientId: clientId });
+                        if (remainingTxCount === 0) {
+                            await db.collection('clients').deleteOne({ id: clientId });
+                            orphanedClientsDeleted++;
+                            console.log(`Deleted orphaned client ${clientId}`);
+                        }
+                    }
+                }
+
+                console.log(`Cascade delete summary: ${txDeleteResult.deletedCount} transactions, ${orphanedClientsDeleted} orphaned clients`);
             }
+
             await db.collection(type).deleteOne({ id: id });
             return res.status(200).json({ success: true });
         }
