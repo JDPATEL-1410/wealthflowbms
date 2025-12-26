@@ -214,7 +214,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteBatch = (batchId: string) => {
+    // Remove batch from local state
     setBatches(prev => prev.filter(b => b.id !== batchId));
+
+    // Remove all transactions associated with this batch from local state
+    setTransactions(prev => prev.filter(t => t.batchId !== batchId));
+
+    // Delete from database (backend will cascade delete transactions)
     deleteFromDb('batches', batchId);
   };
 

@@ -364,8 +364,15 @@ export const Imports: React.FC<ImportsProps> = ({ currentUser }) => {
   };
 
   const handleDeleteBatch = (batch: ImportBatch) => {
-    if (window.confirm(`Are you sure you want to delete batch "${batch.fileName}"? This action cannot be undone.`)) {
+    const message = `⚠️ Delete Batch: "${batch.fileName}"?\n\n` +
+      `This will permanently delete:\n` +
+      `• The batch record\n` +
+      `• All ${batch.totalLines} transactions from this batch\n\n` +
+      `This action cannot be undone!`;
+
+    if (window.confirm(message)) {
       deleteBatch(batch.id);
+      alert(`✅ Batch and ${batch.totalLines} transactions deleted successfully!`);
     }
   };
 
