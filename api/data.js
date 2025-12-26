@@ -164,7 +164,16 @@ export default async function handler(req, res) {
 
                 const type = query.type;
                 const id = query.id;
+
                 if (type && id && VALID_COLLECTIONS.includes(type)) {
+                    // CASCADE DELETE: If deleting a batch, also delete all associated transactions
+                    if (type === 'batches') {
+                        // First delete all transactions associated with this batch
+                        const deleteResult = await db.collection('transactions').deleteMany({ batchId: id });
+                        console.log(`Cascade delete: Removed ${deleteResult.deletedCount} transactions for batch ${id}`);
+                    }
+
+                    // Then delete the main record
                     await db.collection(type).deleteOne({ id: id });
                     return res.status(200).json({ success: true });
                 }

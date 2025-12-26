@@ -142,6 +142,11 @@ app.delete('/api/data', async (req, res) => {
             return res.status(200).json({ success: true });
         }
         if (type && id && VALID_COLLECTIONS.includes(type)) {
+            // CASCADE DELETE: If deleting a batch, also delete all associated transactions
+            if (type === 'batches') {
+                const deleteResult = await db.collection('transactions').deleteMany({ batchId: id });
+                console.log(`Cascade delete: Removed ${deleteResult.deletedCount} transactions for batch ${id}`);
+            }
             await db.collection(type).deleteOne({ id: id });
             return res.status(200).json({ success: true });
         }
