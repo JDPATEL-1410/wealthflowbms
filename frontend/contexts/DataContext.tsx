@@ -13,8 +13,10 @@ interface DataContextType {
   deleteTeamMember: (memberId: string) => void;
   transactions: BrokerageTransaction[];
   addTransactions: (txs: BrokerageTransaction[]) => void;
+  deleteTransaction: (transactionId: string) => void;
   batches: ImportBatch[];
   addBatch: (batch: ImportBatch) => void;
+  deleteBatch: (batchId: string) => void;
   globalConfig: SharingConfig;
   updateConfig: (config: SharingConfig) => void;
   amcMappings: MappingEntry[];
@@ -24,6 +26,7 @@ interface DataContextType {
   invoices: PayoutInvoice[];
   addInvoice: (invoice: PayoutInvoice) => void;
   updateInvoice: (invoice: PayoutInvoice) => void;
+  deleteInvoice: (invoiceId: string) => void;
   refreshDashboard: (currentUser?: TeamMember) => void;
   clearAllData: () => void;
   loading: boolean;
@@ -197,12 +200,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const deleteTransaction = (transactionId: string) => {
+    setTransactions(prev => prev.filter(t => t.id !== transactionId));
+    deleteFromDb('transactions', transactionId);
+  };
+
   const addBatch = (batch: ImportBatch) => {
     setBatches(prev => {
       const updated = [batch, ...prev];
       saveToDb('batches', batch);
       return updated;
     });
+  };
+
+  const deleteBatch = (batchId: string) => {
+    setBatches(prev => prev.filter(b => b.id !== batchId));
+    deleteFromDb('batches', batchId);
   };
 
   const updateConfig = (newConfig: SharingConfig) => {
@@ -230,6 +243,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     saveToDb('invoices', updatedInvoice, 'id');
   };
 
+  const deleteInvoice = (invoiceId: string) => {
+    setInvoices(prev => prev.filter(inv => inv.id !== invoiceId));
+    deleteFromDb('invoices', invoiceId);
+  };
+
   const refreshDashboard = (user?: TeamMember) => fetchData(user);
 
   const clearAllData = () => {
@@ -255,8 +273,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       deleteTeamMember,
       transactions,
       addTransactions,
+      deleteTransaction,
       batches,
       addBatch,
+      deleteBatch,
       globalConfig,
       updateConfig,
       amcMappings,
@@ -266,6 +286,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       invoices,
       addInvoice,
       updateInvoice,
+      deleteInvoice,
       refreshDashboard,
       clearAllData,
       loading,

@@ -1,17 +1,19 @@
 
+
 import React, { useState, useMemo } from 'react';
-import { Download, Filter, IndianRupee, Clock, FileText, Briefcase, Layers, Landmark, ShieldCheck, Printer, Search, Calendar, ChevronDown, CheckCircle, FileDown } from 'lucide-react';
+import { Download, Filter, IndianRupee, Clock, FileText, Briefcase, Layers, Landmark, ShieldCheck, Printer, Search, Calendar, ChevronDown, CheckCircle, FileDown, Trash2 } from 'lucide-react';
 import { TeamMember, Role, InvoiceStatus, PayoutInvoice, TransactionStatus, BrokerageTransaction } from '../types';
 import { useData } from '../contexts/DataContext';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 interface ReportsProps {
     currentUser: TeamMember;
 }
 
 export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
-    const { transactions, clients, team, globalConfig, invoices, addInvoice, updateInvoice } = useData();
+    const { transactions, clients, team, globalConfig, invoices, addInvoice, updateInvoice, deleteInvoice, deleteTransaction } = useData();
 
     const [activeTab, setActiveTab] = useState<'overview' | 'monthly' | 'client-summary' | 'transaction' | 'invoices' | 'approvals'>('overview');
     const [transactionSearch, setTransactionSearch] = useState('');
@@ -214,6 +216,113 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
         doc.save(`WealthFlow_Invoice_${inv.id}_${inv.month}.pdf`);
     };
 
+    const handleDeleteTransaction = (tx: BrokerageTransaction) => {
+        if (!isAdmin) {
+            alert("Only administrators can delete transactions.");
+            return;
+        }
+        if (window.confirm(`Are you sure you want to delete transaction for ${tx.investorName}? This action cannot be undone.`)) {
+            deleteTransaction(tx.id);
+        }
+    };
+
+    const handleDeleteInvoice = (inv: PayoutInvoice) => {
+        if (!isAdmin && inv.userId !== currentUser.id) {
+            alert("You can only delete your own invoices.");
+            return;
+        }
+        if (window.confirm(`Are you sure you want to delete invoice ${inv.id}? This action cannot be undone.`)) {
+            deleteInvoice(inv.id);
+        }
+    };
+
+    const exportToExcel = (data: any[], filename: string, sheetName: string) => {
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.writeFile(wb, `${filename}.xlsx`);
+    };
+
+    const exportMonthlyReport = () => {
+        const data = monthlySummary.map(m => ({
+            'Settlement Period': m.month,
+            'Transactions': m.count,
+            ...(isAdmin ? { 'Gross Amount (₹)': m.gross.toFixed(2) } : {}),
+            'My Net Share (₹)': m.myShare.toFixed(2),
+            'Invoice Status': m.invoice ? m.invoice.status : 'Not Raised'
+        }));
+        exportToExcel(data, `Monthly_Payout_Report_${currentUser.name}_${new Date().toISOString().split('T')[0]}`, 'Monthly Payouts');
+    };
+
+    const exportClientWiseReport = () => {
+        const data = clientWiseSummary.map(c => ({
+            'Investor Name': c.name,
+            'PAN': c.pan,
+            'Transactions': c.count,
+            ...(isAdmin ? { 'Gross Business (₹)': c.gross.toFixed(2) } : {}),
+            'My Net Share (₹)': c.myShare.toFixed(2)
+        }));
+        exportToExcel(data, `Client_Wise_Report_${currentUser.name}_${new Date().toISOString().split('T')[0]}`, 'Client Summary');
+    };
+
+    const exportTransactionAudit = () => {
+        const data = visibleTransactions
+            .filter(tx => tx.investorName.toLowerCase().includes(transactionSearch.toLowerCase()))
+            .map(tx => ({
+                'Date': tx.transactionDate,
+                'Investor Name': tx.investorName,
+                'PAN': tx.pan,
+                'Folio': tx.folio,
+                'Scheme': tx.schemeName,
+                'AMC': tx.amcName,
+                ...(isAdmin ? { 'Gross Amount (₹)': tx.grossAmount.toFixed(2) } : {}),
+                'My Net Share (₹)': calculateUserShare(tx, currentUser).toFixed(2)
+            }));
+        exportToExcel(data, `Transaction_Audit_${currentUser.name}_${new Date().toISOString().split('T')[0]}`, 'Transactions');
+    };
+
+    const exportAllReports = () => {
+        const wb = XLSX.utils.book_new();
+
+        // Monthly Summary Sheet
+        const monthlyData = monthlySummary.map(m => ({
+            'Settlement Period': m.month,
+            'Transactions': m.count,
+            ...(isAdmin ? { 'Gross Amount (₹)': m.gross.toFixed(2) } : {}),
+            'My Net Share (₹)': m.myShare.toFixed(2),
+            'Invoice Status': m.invoice ? m.invoice.status : 'Not Raised'
+        }));
+        const ws1 = XLSX.utils.json_to_sheet(monthlyData);
+        XLSX.utils.book_append_sheet(wb, ws1, 'Monthly Payouts');
+
+        // Client-wise Sheet
+        const clientData = clientWiseSummary.map(c => ({
+            'Investor Name': c.name,
+            'PAN': c.pan,
+            'Transactions': c.count,
+            ...(isAdmin ? { 'Gross Business (₹)': c.gross.toFixed(2) } : {}),
+            'My Net Share (₹)': c.myShare.toFixed(2)
+        }));
+        const ws2 = XLSX.utils.json_to_sheet(clientData);
+        XLSX.utils.book_append_sheet(wb, ws2, 'Client Summary');
+
+        // Transactions Sheet
+        const txData = visibleTransactions.map(tx => ({
+            'Date': tx.transactionDate,
+            'Investor Name': tx.investorName,
+            'PAN': tx.pan,
+            'Folio': tx.folio,
+            'Scheme': tx.schemeName,
+            'AMC': tx.amcName,
+            ...(isAdmin ? { 'Gross Amount (₹)': tx.grossAmount.toFixed(2) } : {}),
+            'My Net Share (₹)': calculateUserShare(tx, currentUser).toFixed(2)
+        }));
+        const ws3 = XLSX.utils.json_to_sheet(txData);
+        XLSX.utils.book_append_sheet(wb, ws3, 'Transactions');
+
+        XLSX.writeFile(wb, `Complete_Report_${currentUser.name}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -227,6 +336,26 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                     <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg border transition ${showFilters ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}>
                         <Filter className="w-4 h-4 mr-2" /> Month Filter
                     </button>
+                    {activeTab === 'monthly' && (
+                        <button onClick={exportMonthlyReport} className="flex items-center px-4 py-2 text-sm font-medium rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition">
+                            <Download className="w-4 h-4 mr-2" /> Export Monthly
+                        </button>
+                    )}
+                    {activeTab === 'client-summary' && (
+                        <button onClick={exportClientWiseReport} className="flex items-center px-4 py-2 text-sm font-medium rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition">
+                            <Download className="w-4 h-4 mr-2" /> Export Clients
+                        </button>
+                    )}
+                    {activeTab === 'transaction' && (
+                        <button onClick={exportTransactionAudit} className="flex items-center px-4 py-2 text-sm font-medium rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition">
+                            <Download className="w-4 h-4 mr-2" /> Export Transactions
+                        </button>
+                    )}
+                    {(activeTab === 'overview' || activeTab === 'monthly') && (
+                        <button onClick={exportAllReports} className="flex items-center px-4 py-2 text-sm font-medium rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition">
+                            <Download className="w-4 h-4 mr-2" /> Export All
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -360,7 +489,10 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${inv.status === 'PAID' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{inv.status}</span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <button onClick={() => generateInvoicePDF(inv)} className="p-2 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-lg transition" title="Download PDF"><Download className="w-4 h-4" /></button>
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button onClick={() => generateInvoicePDF(inv)} className="p-2 text-slate-400 hover:text-blue-600 bg-slate-50 rounded-lg transition" title="Download PDF"><Download className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDeleteInvoice(inv)} className="p-2 text-slate-400 hover:text-red-600 bg-slate-50 rounded-lg transition" title="Delete Invoice"><Trash2 className="w-4 h-4" /></button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -458,6 +590,7 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                                 <th className="px-6 py-4">Date</th>
                                 <th className="px-6 py-4">Investor</th>
                                 <th className="px-6 py-4 text-right">My Net Share</th>
+                                {isAdmin && <th className="px-6 py-4 text-center">Action</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -466,6 +599,11 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
                                     <td className="px-6 py-4 text-slate-500">{tx.transactionDate}</td>
                                     <td className="px-6 py-4 font-bold text-slate-900">{tx.investorName}</td>
                                     <td className="px-6 py-4 text-right font-black text-emerald-600">₹ {calculateUserShare(tx, currentUser).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                    {isAdmin && (
+                                        <td className="px-6 py-4 text-center">
+                                            <button onClick={() => handleDeleteTransaction(tx)} className="p-2 text-slate-400 hover:text-red-600 bg-slate-50 rounded-lg transition" title="Delete Transaction"><Trash2 className="w-4 h-4" /></button>
+                                        </td>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>
