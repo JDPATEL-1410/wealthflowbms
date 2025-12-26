@@ -59,19 +59,22 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
      */
     const { visibleTransactions } = useMemo(() => {
         const filtered = transactions.filter(tx => {
-            const client = clients.find(c => c.id === tx.mappedClientId);
-
-            if (!isSuperUser) {
-                if (!client) return false;
-                const userLevelKey = `level${currentUser.level}Id` as keyof typeof client.hierarchy;
-                if (client.hierarchy[userLevelKey] !== currentUser.id) return false;
-            }
-
+            // Date filtering
             const txYear = (tx.brokeragePeriod || tx.transactionDate).split('-')[0];
             const txMonth = (tx.brokeragePeriod || tx.transactionDate).split('-')[1];
 
             if (filters.year !== 'All' && txYear !== filters.year) return false;
             if (filters.month !== 'All' && txMonth !== filters.month) return false;
+
+            // Hierarchy filtering - ONLY for non-admin users
+            if (!isSuperUser) {
+                const client = clients.find(c => c.id === tx.mappedClientId);
+                if (!client) return false;
+
+                const userLevelKey = `level${currentUser.level}Id` as keyof typeof client.hierarchy;
+                if (client.hierarchy[userLevelKey] !== currentUser.id) return false;
+            }
+            // Admin/Super users see ALL transactions
 
             return true;
         });
