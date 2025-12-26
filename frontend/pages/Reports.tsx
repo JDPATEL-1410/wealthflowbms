@@ -21,10 +21,18 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
     const isAdmin = currentUser.role === Role.ADMIN;
     const isSuperUser = isAdmin || currentUser.level === 0 || currentUser.level === 1;
 
+    // DEBUG LOG
+    console.log('Reports Debug:', {
+        totalTransactions: transactions.length,
+        isAdmin,
+        isSuperUser,
+        currentUserId: currentUser.id
+    });
+
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState({
         month: 'All',
-        year: '2024'
+        year: 'All'
     });
 
     const yearsList = useMemo(() => {
@@ -60,8 +68,10 @@ export const Reports: React.FC<ReportsProps> = ({ currentUser }) => {
     const { visibleTransactions } = useMemo(() => {
         const filtered = transactions.filter(tx => {
             // Date filtering
-            const txYear = (tx.brokeragePeriod || tx.transactionDate).split('-')[0];
-            const txMonth = (tx.brokeragePeriod || tx.transactionDate).split('-')[1];
+            // Date filtering
+            const dateStr = tx.brokeragePeriod || tx.transactionDate || '';
+            const txYear = dateStr.includes('-') ? dateStr.split('-')[0] : '';
+            const txMonth = dateStr.includes('-') ? dateStr.split('-')[1] : '';
 
             if (filters.year !== 'All' && txYear !== filters.year) return false;
             if (filters.month !== 'All' && txMonth !== filters.month) return false;
