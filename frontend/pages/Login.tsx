@@ -26,7 +26,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsAuthenticating(true);
@@ -34,22 +34,47 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const identifier = email.trim().toLowerCase();
     const pass = password.trim();
 
-    // Verify against database team records
-    setTimeout(() => {
-      const user = team.find(u => {
+    try {
+      // Fetch user profiles from dedicated authentication collection
+      const response = await fetch('/api/data?type=user_profiles');
+      const userProfiles = await response.json();
+
+      // Verify against user_profiles (dedicated authentication collection)
+      const userProfile = userProfiles.find((u: any) => {
         const matchesEmail = u.email?.toLowerCase() === identifier;
         const matchesCode = u.code.toLowerCase() === identifier;
         const matchesPassword = u.password === pass;
-        return (matchesEmail || matchesCode) && matchesPassword;
+        const isActive = u.isActive !== false; // Default to true if not set
+        return (matchesEmail || matchesCode) && matchesPassword && isActive;
       });
 
-      if (user) {
-        onLogin(user);
+      if (userProfile) {
+        // Find corresponding team member for full data
+        const teamMember = team.find(t => t.id === userProfile.id) || {
+          ...userProfile,
+          // Ensure all required TeamMember fields are present
+        };
+        onLogin(teamMember);
       } else {
-        setError('Invalid credentials. Please verify your ID/Email and Password.');
+        // Check if user exists but is inactive
+        const inactiveUser = userProfiles.find((u: any) => {
+          const matchesEmail = u.email?.toLowerCase() === identifier;
+          const matchesCode = u.code.toLowerCase() === identifier;
+          return (matchesEmail || matchesCode) && u.isActive === false;
+        });
+
+        if (inactiveUser) {
+          setError('Account is inactive. Please contact administrator.');
+        } else {
+          setError('Invalid credentials. Please verify your ID/Email and Password.');
+        }
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('Unable to connect to authentication service. Please try again.');
+    } finally {
       setIsAuthenticating(false);
-    }, 800);
+    }
   };
 
   const handleSendOtp = (e: React.FormEvent) => {
@@ -92,7 +117,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
 
     if (targetUser) {
-      const updatedTeam = team.map(u => 
+      const updatedTeam = team.map(u =>
         u.id === targetUser.id ? { ...u, password: newPassword } : u
       );
       updateTeam(updatedTeam);
@@ -133,13 +158,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Employee ID or Email</label>
                     <div className="relative">
                       <Mail className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
-                      <input 
-                        type="text" 
-                        required 
+                      <input
+                        type="text"
+                        required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium" 
-                        placeholder="ID or registered email" 
+                        className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium"
+                        placeholder="ID or registered email"
                       />
                     </div>
                   </div>
@@ -147,8 +172,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Password</label>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setView('FORGOT')}
                         className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider"
                       >
@@ -157,16 +182,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </div>
                     <div className="relative">
                       <Lock className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
-                      <input 
-                        type={showPassword ? "text" : "password"} 
-                        required 
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full pl-12 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium" 
-                        placeholder="••••••••" 
+                        className="w-full pl-12 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium"
+                        placeholder="••••••••"
                       />
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600"
                       >
@@ -176,9 +201,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   </div>
                 </div>
 
-                <button 
+                <button
                   id="login-btn"
-                  type="submit" 
+                  type="submit"
                   disabled={isAuthenticating}
                   className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition flex items-center justify-center space-x-2 disabled:opacity-50"
                 >
@@ -212,12 +237,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
                 <div>
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Registered Email</label>
-                  <input 
-                    type="email" 
-                    required 
+                  <input
+                    type="email"
+                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium" 
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
                   />
                 </div>
 
@@ -245,20 +270,20 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 )}
 
                 <div className="flex justify-center">
-                  <input 
-                    type="text" 
-                    required 
+                  <input
+                    type="text"
+                    required
                     maxLength={6}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value)}
-                    className="w-48 text-center tracking-[0.5em] text-2xl font-black py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition" 
-                    placeholder="000000" 
+                    className="w-48 text-center tracking-[0.5em] text-2xl font-black py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
+                    placeholder="000000"
                   />
                 </div>
 
                 <div className="flex flex-col space-y-3 text-center">
-                   <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition">Verify Code</button>
-                   <p className="text-xs text-slate-400">Didn't receive it? <button type="button" onClick={handleSendOtp} className="text-blue-600 font-bold">Resend</button></p>
+                  <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition">Verify Code</button>
+                  <p className="text-xs text-slate-400">Didn't receive it? <button type="button" onClick={handleSendOtp} className="text-blue-600 font-bold">Resend</button></p>
                 </div>
               </form>
             )}
@@ -282,22 +307,22 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">New Password</label>
-                    <input 
-                      type="password" 
-                      required 
+                    <input
+                      type="password"
+                      required
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
                     />
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Confirm Password</label>
-                    <input 
-                      type="password" 
-                      required 
+                    <input
+                      type="password"
+                      required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium" 
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
                     />
                   </div>
                 </div>
@@ -306,13 +331,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               </form>
             )}
           </div>
-          
+
           <div className="bg-slate-50 p-4 border-t border-slate-100 text-center flex flex-col items-center">
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center mb-1">
               <ShieldCheck className="w-3 h-3 mr-1.5" /> Secure Enterprise System
             </p>
             <p className="text-[9px] text-slate-300 font-bold uppercase tracking-tight">
-               {loading ? 'Initializing...' : isOnline ? 'System Live' : 'Maintenance Mode'}
+              {loading ? 'Initializing...' : isOnline ? 'System Live' : 'Maintenance Mode'}
             </p>
           </div>
         </div>

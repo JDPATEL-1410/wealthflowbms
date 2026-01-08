@@ -76,19 +76,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetch(buildUrl('scheme_mappings')).then(res => res.json()),
         fetch(buildUrl('config')).then(res => res.json()),
         fetch(buildUrl('invoices')).then(res => res.json()),
+        fetch(buildUrl('user_profiles')).then(res => res.json()),
       ]);
 
-      const [c, t, b, tx, amc, sch, cfg, inv] = results.map(r =>
+      const [c, t, b, tx, amc, sch, cfg, inv, profiles] = results.map(r =>
         (r.status === 'fulfilled' && Array.isArray(r.value)) ? r.value : []
       );
 
-      // Only fallback to Mock data if the database fetch strictly returned an error/rejection,
-      // NOT if it successfully returned an empty list.
+      // Set team data - only use mock fallback if the fetch actually failed
+      // If it succeeded but returned empty array, that means DB is empty (not an error)
       if (results[1].status === 'fulfilled') {
         setTeam(t);
       } else {
         console.warn("Database team fetch failed, using mock fallback");
         setTeam(MOCK_TEAM);
+      }
+
+      // Log user profiles status for debugging
+      if (results[8].status === 'fulfilled') {
+        console.log(`✅ Loaded ${profiles.length} user profile(s) from database`);
+      } else {
+        console.warn("⚠️ Failed to load user profiles");
       }
 
       setClients(c);
@@ -101,9 +109,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const configVal = results[6].status === 'fulfilled' ? results[6].value : null;
       if (Array.isArray(configVal) && configVal.length > 0) {
         setGlobalConfig(configVal[0]);
-      } else {
+      } else if (results[6].status === 'rejected') {
+        // Only use fallback if fetch failed, not if it's just empty
         setGlobalConfig(GLOBAL_CONFIG);
       }
+
 
       setIsOnline(true);
     } catch (err) {
