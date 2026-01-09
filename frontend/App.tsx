@@ -18,33 +18,65 @@ const AppContent: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
 
-  // Restore user session from localStorage on app load
+
+  // Check authentication status with Passport.js on app load
   useEffect(() => {
     if (sessionRestored) return;
 
-    const savedUser = localStorage.getItem('wealthflow_user');
-    if (savedUser && !loading && team.length > 0) {
+    const checkAuthStatus = async () => {
       try {
-        const parsedUser = JSON.parse(savedUser);
-        // Verify user still exists in team
-        const userExists = team.find(t => t.id === parsedUser.id);
-        if (userExists) {
-          setCurrentUser(userExists);
-          setContextUser(userExists); // This triggers fetchData in DataContext
+        console.log('🔍 Checking authentication status...');
+
+        // Check if user is authenticated via Passport session
+        const response = await fetch('/api/auth/status', {
+          credentials: 'include' // IMPORTANT: Send session cookie
+        });
+
+        const data = await response.json();
+
+        if (data.authenticated && data.user) {
+          console.log('✅ User authenticated:', data.user);
+
+          // Create TeamMember object from authenticated user
+          const teamMember: TeamMember = {
+            id: data.user.id,
+            name: data.user.name,
+            code: data.user.code || '',
+            role: data.user.role,
+            level: data.user.level,
+            email: data.user.email,
+            password: '',
+            bankDetails: data.user.bankDetails || {
+              accountName: '',
+              accountNumber: '',
+              bankName: '',
+              ifscCode: ''
+            }
+          };
+
+          setCurrentUser(teamMember);
+          setContextUser(teamMember);
           setIsLoggedIn(true);
+
+          // Also save to localStorage for backward compatibility
+          localStorage.setItem('wealthflow_user', JSON.stringify(teamMember));
         } else {
-          // User no longer exists, clear session
+          console.log('ℹ️ No active session');
+          // Clear any old localStorage data
           localStorage.removeItem('wealthflow_user');
         }
       } catch (error) {
-        console.error('Failed to restore session:', error);
+        console.error('❌ Auth check failed:', error);
         localStorage.removeItem('wealthflow_user');
+      } finally {
+        setSessionRestored(true);
       }
-      setSessionRestored(true);
-    } else if (!loading) {
-      setSessionRestored(true);
+    };
+
+    if (!loading) {
+      checkAuthStatus();
     }
-  }, [loading, team, sessionRestored, setContextUser]);
+  }, [loading, sessionRestored, setContextUser]);
 
   // Update current user when team data changes
   useEffect(() => {
@@ -69,12 +101,26 @@ const AppContent: React.FC = () => {
     refreshDashboard(user);
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setContextUser(null); // Clear user from DataContext
-    setIsLoggedIn(false);
-    // Clear user session from localStorage
-    localStorage.removeItem('wealthflow_user');
+  const handleLogout = async () => {
+    try {
+      console.log('🚪 Logging out...');
+
+      // Call Passport.js logout endpoint
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include' // IMPORTANT: Send session cookie
+      });
+
+      console.log('✅ Logout successful');
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+    } finally {
+      // Clear frontend state regardless of API call result
+      setCurrentUser(null);
+      setContextUser(null);
+      setIsLoggedIn(false);
+      localStorage.removeItem('wealthflow_user');
+    }
   };
 
   if (loading || !sessionRestored) {

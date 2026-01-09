@@ -35,43 +35,54 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const pass = password.trim();
 
     try {
-      // Fetch user profiles from dedicated authentication collection
-      const response = await fetch('/api/data?type=user_profiles');
-      const userProfiles = await response.json();
+      console.log('🔐 Attempting login with Passport.js...');
 
-      // Verify against user_profiles (dedicated authentication collection)
-      const userProfile = userProfiles.find((u: any) => {
-        const matchesEmail = u.email?.toLowerCase() === identifier;
-        const matchesCode = u.code.toLowerCase() === identifier;
-        const matchesPassword = u.password === pass;
-        const isActive = u.isActive !== false; // Default to true if not set
-        return (matchesEmail || matchesCode) && matchesPassword && isActive;
+      // Use new Passport.js authentication endpoint
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // IMPORTANT: Send cookies for session
+        body: JSON.stringify({
+          email: identifier,
+          password: pass
+        })
       });
 
-      if (userProfile) {
-        // Find corresponding team member for full data
-        const teamMember = team.find(t => t.id === userProfile.id) || {
-          ...userProfile,
-          // Ensure all required TeamMember fields are present
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Handle authentication errors
+        throw new Error(data.error || 'Login failed');
+      }
+
+      if (data.success && data.user) {
+        console.log('✅ Login successful:', data.user);
+
+        // Create TeamMember object from authenticated user
+        const teamMember: TeamMember = {
+          id: data.user.id,
+          name: data.user.name,
+          code: data.user.code || '',
+          role: data.user.role,
+          level: data.user.level,
+          email: data.user.email,
+          password: '', // Don't store password in frontend
+          bankDetails: data.user.bankDetails || {
+            accountName: '',
+            accountNumber: '',
+            bankName: '',
+            ifscCode: ''
+          }
         };
+
+        // Call parent onLogin with authenticated user
         onLogin(teamMember);
       } else {
-        // Check if user exists but is inactive
-        const inactiveUser = userProfiles.find((u: any) => {
-          const matchesEmail = u.email?.toLowerCase() === identifier;
-          const matchesCode = u.code.toLowerCase() === identifier;
-          return (matchesEmail || matchesCode) && u.isActive === false;
-        });
-
-        if (inactiveUser) {
-          setError('Account is inactive. Please contact administrator.');
-        } else {
-          setError('Invalid credentials. Please verify your ID/Email and Password.');
-        }
+        setError('Login failed. Please try again.');
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      setError('Unable to connect to authentication service. Please try again.');
+    } catch (error: any) {
+      console.error('❌ Login error:', error);
+      setError(error.message || 'Unable to connect to authentication service. Please try again.');
     } finally {
       setIsAuthenticating(false);
     }
