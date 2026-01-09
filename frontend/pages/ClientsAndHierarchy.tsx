@@ -119,7 +119,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
     setIsTeamModalOpen(true);
   };
 
-  const saveTeamMember = () => {
+  const saveTeamMember = async () => {
     // Validation
     if (!memberForm.name || !memberForm.code) {
       alert("❌ Name and Code are required.");
@@ -138,29 +138,37 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
       }
     }
 
-    if (editingMember) {
-      updateTeam(team.map(m => m.id === editingMember.id ? { ...m, ...memberForm } as TeamMember : m));
-      alert(`✅ User "${memberForm.name}" updated successfully!`);
-    } else {
-      const newMember: TeamMember = {
-        id: `tm_${Date.now()}`,
-        name: memberForm.name!,
-        code: memberForm.code!,
-        role: memberForm.role || Role.OPS,
-        level: memberForm.level ?? 6,
-        email: memberForm.email,
-        password: memberForm.password
-      };
-      updateTeam([...team, newMember]);
+    try {
+      if (editingMember) {
+        await updateTeam(team.map(m => m.id === editingMember.id ? { ...m, ...memberForm } as TeamMember : m));
+        alert(`✅ User "${memberForm.name}" updated successfully!`);
+      } else {
+        const newMember: TeamMember = {
+          id: `tm_${Date.now()}`,
+          name: memberForm.name!,
+          code: memberForm.code!,
+          role: memberForm.role || Role.OPS,
+          level: memberForm.level ?? 6,
+          email: memberForm.email,
+          password: memberForm.password
+        };
 
-      // Success message with login credentials
-      const loginInfo = memberForm.email && memberForm.password
-        ? `\n\n📧 Login Email: ${memberForm.email}\n🔑 Password: ${memberForm.password}\n\n✅ User can now sign in!`
-        : `\n\n⚠️ No login credentials set - user cannot sign in yet.`;
+        console.log('Creating new user:', newMember);
+        await updateTeam([...team, newMember]);
+        console.log('User saved to database');
 
-      alert(`✅ User "${memberForm.name}" created successfully!${loginInfo}`);
+        // Success message with login credentials
+        const loginInfo = memberForm.email && memberForm.password
+          ? `\n\n📧 Login Email: ${memberForm.email}\n🔑 Password: ${memberForm.password}\n\n✅ User can now sign in!\n\n💾 User has been saved to database and will persist across refreshes.`
+          : `\n\n⚠️ No login credentials set - user cannot sign in yet.`;
+
+        alert(`✅ User "${memberForm.name}" created successfully!${loginInfo}`);
+      }
+      setIsTeamModalOpen(false);
+    } catch (error) {
+      console.error('Error saving team member:', error);
+      alert('❌ Failed to save user. Please try again.');
     }
-    setIsTeamModalOpen(false);
   };
 
   const handleDeleteTeamMember = (member: TeamMember) => {

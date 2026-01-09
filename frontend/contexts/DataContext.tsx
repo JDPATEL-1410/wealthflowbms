@@ -192,9 +192,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     deleteFromDb('clients', clientId);
   };
 
-  const updateTeam = (newTeam: TeamMember[]) => {
+  const updateTeam = async (newTeam: TeamMember[]) => {
+    console.log('📝 Updating team with', newTeam.length, 'members');
     setTeam(newTeam);
-    saveToDb('team', newTeam, 'id');
+    await saveToDb('team', newTeam, 'id');
+    console.log('✅ Team saved to database');
   };
 
   const deleteTeamMember = (memberId: string) => {
