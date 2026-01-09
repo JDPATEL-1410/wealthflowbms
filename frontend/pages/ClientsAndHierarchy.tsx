@@ -165,9 +165,9 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
         alert(`✅ User "${memberForm.name}" created successfully!${loginInfo}`);
       }
       setIsTeamModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving team member:', error);
-      alert('❌ Failed to save user. Please try again.');
+      alert(`❌ Failed to save user: ${error.message || 'Please try again.'}`);
     }
   };
 
