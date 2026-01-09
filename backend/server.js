@@ -324,7 +324,12 @@ app.get('/api/data', async (req, res) => {
                     filter = {};
             }
         }
-        const data = await db.collection(type).find(filter).toArray();
+        const options = {};
+        if (type === 'team' || type === 'user_profiles') {
+            options.projection = { password: 0 };
+        }
+
+        const data = await db.collection(type).find(filter, options).toArray();
         res.status(200).json(data || []);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -342,9 +347,20 @@ app.post('/api/data', async (req, res) => {
         const filterKey = upsertField || 'id';
 
         if (Array.isArray(payload)) {
-            const operations = payload.map(item => ({
+            // SECURITY: Hash passwords if updating team collection in bulk
+            let processedPayload = [...payload];
+            if (collection === 'team') {
+                console.log(`🔐 Hashing passwords for ${payload.length} team members...`);
+                for (let i = 0; i < processedPayload.length; i++) {
+                    if (processedPayload[i].password && !processedPayload[i].password.startsWith('$2a$')) {
+                        processedPayload[i].password = await bcrypt.hash(processedPayload[i].password, 10);
+                    }
+                }
+            }
+
+            const operations = processedPayload.map(item => ({
                 updateOne: {
-                    filter: { [filterKey]: item[filterKey] },
+                    filter: { [filterKey]: item[filterKey] || item.id || item._id },
                     update: { $set: { ...item, updatedAt: now }, $setOnInsert: { createdAt: now } },
                     upsert: true
                 }
@@ -353,8 +369,8 @@ app.post('/api/data', async (req, res) => {
 
             // SYNC: If updating team collection, also sync to user_profiles
             if (collection === 'team') {
-                console.log(`🔄 Syncing ${payload.length} team member(s) to user_profiles...`);
-                const profileOperations = payload.map(member => ({
+                console.log(`🔄 Syncing ${processedPayload.length} team member(s) to user_profiles...`);
+                const profileOperations = processedPayload.map(member => ({
                     updateOne: {
                         filter: { id: member.id },
                         update: {
@@ -365,7 +381,7 @@ app.post('/api/data', async (req, res) => {
                                 role: member.role,
                                 level: member.level,
                                 email: member.email,
-                                password: member.password,
+                                password: member.password, // This is already hashed above
                                 bankDetails: member.bankDetails || {},
                                 isActive: true,
                                 updatedAt: now
@@ -384,9 +400,18 @@ app.post('/api/data', async (req, res) => {
             res.status(200).json({ success: true, count: result.upsertedCount + result.modifiedCount });
         } else {
             const filterValue = payload[filterKey] || payload.id || payload._id;
+
+            // SECURITY: If this is the team collection and a password is provided, hash it
+            let finalPayload = { ...payload };
+            if (collection === 'team' && payload.password && !payload.password.startsWith('$2a$')) {
+                console.log(`🔐 Hashing password for team member ${payload.name}...`);
+                const salt = await bcrypt.genSalt(10);
+                finalPayload.password = await bcrypt.hash(payload.password, salt);
+            }
+
             await db.collection(collection).updateOne(
                 { [filterKey]: filterValue },
-                { $set: { ...payload, updatedAt: now }, $setOnInsert: { createdAt: now } },
+                { $set: { ...finalPayload, updatedAt: now }, $setOnInsert: { createdAt: now } },
                 { upsert: true }
             );
 
@@ -403,7 +428,7 @@ app.post('/api/data', async (req, res) => {
                             role: payload.role,
                             level: payload.level,
                             email: payload.email,
-                            password: payload.password,
+                            password: finalPayload.password, // Use hashed password
                             bankDetails: payload.bankDetails || {},
                             isActive: true,
                             updatedAt: now
