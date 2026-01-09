@@ -360,88 +360,94 @@ app.post('/api/data', async (req, res) => {
 
         if (Array.isArray(payload)) {
             // SECURITY: Hash passwords if updating team collection in bulk
-            let processedPayload = [...payload];
+            let processedPayload = payload.map(item => ({ ...item })); // Deep-ish copy of array items
+
             if (collection === 'team') {
-                console.log(`🔐 Hashing passwords for ${payload.length} team members...`);
+                console.log(`🔐 Checking passwords for ${processedPayload.length} team members...`);
                 for (let i = 0; i < processedPayload.length; i++) {
-                    if (processedPayload[i].password && !processedPayload[i].password.startsWith('$2a$')) {
-                        processedPayload[i].password = await bcrypt.hash(processedPayload[i].password, 10);
+                    const pass = processedPayload[i].password;
+                    if (pass && typeof pass === 'string' && !pass.startsWith('$2a$')) {
+                        console.log(`🔑 Hashing password for: ${processedPayload[i].name || processedPayload[i].email}`);
+                        processedPayload[i].password = await bcrypt.hash(pass, 10);
                     }
                 }
             }
 
-            const operations = processedPayload.map(item => ({
-                updateOne: {
-                    filter: { [filterKey]: item[filterKey] || item.id || item._id },
-                    update: { $set: { ...item, updatedAt: now }, $setOnInsert: { createdAt: now } },
-                    upsert: true
-                }
-            }));
+            const operations = processedPayload.map(item => {
+                // Remove _id from set bit to avoid immutable field error
+                const { _id, ...updateData } = item;
+                return {
+                    updateOne: {
+                        filter: { [filterKey]: item[filterKey] || item.id },
+                        update: { $set: { ...updateData, updatedAt: now }, $setOnInsert: { createdAt: now } },
+                        upsert: true
+                    }
+                };
+            });
+
             const result = await db.collection(collection).bulkWrite(operations);
 
             // SYNC: If updating team collection, also sync to user_profiles
             if (collection === 'team') {
                 console.log(`🔄 Syncing ${processedPayload.length} team member(s) to user_profiles...`);
-                const profileOperations = processedPayload.map(member => ({
-                    updateOne: {
-                        filter: { id: member.id },
-                        update: {
-                            $set: {
-                                id: member.id,
-                                name: member.name,
-                                code: member.code,
-                                role: member.role,
-                                level: member.level,
-                                email: member.email,
-                                password: member.password, // This is already hashed above
-                                bankDetails: member.bankDetails || {},
-                                isActive: true,
-                                updatedAt: now
+                const profileOperations = processedPayload.map(member => {
+                    const { _id, password, ...profileData } = member;
+                    return {
+                        updateOne: {
+                            filter: { id: member.id },
+                            update: {
+                                $set: {
+                                    ...profileData,
+                                    password: password, // Use hashed password
+                                    isActive: true,
+                                    updatedAt: now
+                                },
+                                $setOnInsert: {
+                                    createdAt: member.createdAt || now
+                                }
                             },
-                            $setOnInsert: {
-                                createdAt: member.createdAt || now
-                            }
-                        },
-                        upsert: true
-                    }
-                }));
+                            upsert: true
+                        }
+                    };
+                });
                 await db.collection('user_profiles').bulkWrite(profileOperations);
                 console.log('✅ User profiles synced successfully');
             }
 
-            res.status(200).json({ success: true, count: result.upsertedCount + result.modifiedCount });
+            res.status(200).json({
+                success: true,
+                count: (result.upsertedCount || 0) + (result.modifiedCount || 0)
+            });
         } else {
-            const filterValue = payload[filterKey] || payload.id || payload._id;
+            const filterValue = payload[filterKey] || payload.id;
 
             // SECURITY: If this is the team collection and a password is provided, hash it
             let finalPayload = { ...payload };
-            if (collection === 'team' && payload.password && !payload.password.startsWith('$2a$')) {
+            if (collection === 'team' && payload.password && typeof payload.password === 'string' && !payload.password.startsWith('$2a$')) {
                 console.log(`🔐 Hashing password for team member ${payload.name}...`);
                 const salt = await bcrypt.genSalt(10);
                 finalPayload.password = await bcrypt.hash(payload.password, salt);
             }
 
+            // Remove _id from set bit
+            const { _id, ...cleanPayload } = finalPayload;
+
             await db.collection(collection).updateOne(
                 { [filterKey]: filterValue },
-                { $set: { ...finalPayload, updatedAt: now }, $setOnInsert: { createdAt: now } },
+                { $set: { ...cleanPayload, updatedAt: now }, $setOnInsert: { createdAt: now } },
                 { upsert: true }
             );
 
             // SYNC: If updating team collection, also sync to user_profiles
             if (collection === 'team') {
                 console.log(`🔄 Syncing team member ${payload.name} to user_profiles...`);
+                const { _id: dummy, password: finalPassword, ...syncData } = finalPayload;
                 await db.collection('user_profiles').updateOne(
                     { id: payload.id },
                     {
                         $set: {
-                            id: payload.id,
-                            name: payload.name,
-                            code: payload.code,
-                            role: payload.role,
-                            level: payload.level,
-                            email: payload.email,
-                            password: finalPayload.password, // Use hashed password
-                            bankDetails: payload.bankDetails || {},
+                            ...syncData,
+                            password: finalPassword,
                             isActive: true,
                             updatedAt: now
                         },
@@ -457,6 +463,7 @@ app.post('/api/data', async (req, res) => {
             res.status(200).json({ success: true });
         }
     } catch (error) {
+        console.error(`❌ Error in POST /api/data for ${collection || 'unknown'}:`, error);
         res.status(500).json({ error: error.message });
     }
 });
