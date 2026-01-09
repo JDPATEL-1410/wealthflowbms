@@ -137,6 +137,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await fetch(getApiUrl('/api/data'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ collection, payload, upsertField })
       });
       if (!response.ok) {
@@ -158,7 +159,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsSyncing(true);
     try {
       const response = await fetch(getApiUrl('/api/data', { type: collection, id }), {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Delete API request failed');
       setIsOnline(true);
