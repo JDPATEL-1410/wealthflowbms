@@ -154,6 +154,18 @@ async function initializeDatabase(db) {
             console.log('✅ Default admin profile created in user_profiles');
         } else {
             console.log(`✅ Found ${userProfilesCount} user profile(s) in database`);
+
+            // EMERGENCY CHECK: Ensure existing admin has a hashed password
+            const adminUser = await db.collection('user_profiles').findOne({ email: 'admin@wealthflow.com' });
+            if (adminUser && adminUser.password === 'admin') {
+                console.log('🛡️ Plain-text admin password detected. Hashing for security...');
+                const hashedPassword = await bcrypt.hash('admin', 10);
+                await db.collection('user_profiles').updateOne(
+                    { email: 'admin@wealthflow.com' },
+                    { $set: { password: hashedPassword } }
+                );
+                console.log('✅ Admin password hashed successfully');
+            }
         }
 
         // STEP 2: Sync team collection with user_profiles

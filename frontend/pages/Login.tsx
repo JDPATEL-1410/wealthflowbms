@@ -13,8 +13,8 @@ type AuthView = 'LOGIN' | 'FORGOT' | 'OTP' | 'RESET';
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const { team, updateTeam, isOnline, loading } = useData();
   const [view, setView] = useState<AuthView>('LOGIN');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('admin@wealthflow.com');
+  const [password, setPassword] = useState('admin');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
