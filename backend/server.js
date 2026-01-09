@@ -3,6 +3,12 @@ import cors from 'cors';
 import { MongoClient } from 'mongodb';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import session from 'express-session';
+import MongoStore from 'connect-mongo';
+import passport from './config/passport.js';
+import { setDatabase } from './config/passport.js';
+import authRoutes from './routes/auth.js';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,15 +47,43 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '50mb' }));
-
-// PRODUCTION FIX: Log all requests for debugging
-app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
-    next();
-});
+app.use(express.urlencoded({ extended: true }));
 
 // MongoDB connection
 const uri = process.env.MONGODB_URI || 'mongodb+srv://wealthflow_admin:wealthflow123@wealthflow-cluster.e25dw6i.mongodb.net/?appName=wealthflow-cluster';
+
+// Session configuration
+const SESSION_SECRET = process.env.SESSION_SECRET || 'wealthflow-secret-key-change-in-production';
+const isProduction = process.env.NODE_ENV === 'production';
+
+app.use(session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: uri,
+        dbName: 'wealthflow',
+        collectionName: 'sessions',
+        ttl: 24 * 60 * 60 // 1 day
+    }),
+    cookie: {
+        secure: isProduction, // true in production (HTTPS)
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 1 day
+        sameSite: isProduction ? 'none' : 'lax'
+    }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// PRODUCTION FIX: Log all requests for debugging
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'} - Auth: ${req.isAuthenticated()}`);
+    next();
+});
+
 let cachedClient = null;
 let cachedDb = null;
 
@@ -70,6 +104,12 @@ async function connectToDatabase() {
         // Initialize database with default admin user if team collection is empty
         await initializeDatabase(db);
 
+        // Set database for Passport
+        setDatabase(db);
+
+        // Make db available to routes
+        app.locals.db = db;
+
         return { client, db };
     } catch (error) {
         console.error("MongoDB Connection Error:", error);
@@ -88,6 +128,9 @@ async function initializeDatabase(db) {
         if (userProfilesCount === 0) {
             console.log('📋 Creating user_profiles collection with default admin...');
 
+            // Hash default admin password
+            const hashedPassword = await bcrypt.hash('admin', 10);
+
             const defaultAdminProfile = {
                 id: 'admin_root',
                 name: 'System Administrator',
@@ -95,7 +138,7 @@ async function initializeDatabase(db) {
                 role: 'ADMIN',
                 level: 1,
                 email: 'admin@wealthflow.com',
-                password: 'admin', // In production, this should be hashed
+                password: hashedPassword, // Hashed password
                 bankDetails: {
                     accountName: '',
                     accountNumber: '',
@@ -228,6 +271,9 @@ const VALID_COLLECTIONS = [
     'clients', 'team', 'transactions', 'batches',
     'amc_mappings', 'scheme_mappings', 'config', 'invoices', 'user_profiles'
 ];
+
+// Authentication Routes
+app.use('/api/auth', authRoutes);
 
 // API Routes
 app.get('/api/data', async (req, res) => {
