@@ -1,7 +1,9 @@
 
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Client, TeamMember, BrokerageTransaction, SharingConfig, ImportBatch, MappingEntry, PayoutInvoice, Role } from '../types';
 import { MOCK_CLIENTS, MOCK_TEAM, GLOBAL_CONFIG, MOCK_BATCHES, MOCK_TRANSACTIONS, MOCK_INVOICES } from '../services/mockData';
+import { getApiUrl } from '../config/apiConfig';
 
 interface DataContextType {
   clients: Client[];
@@ -61,10 +63,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Build query params for user-specific filtering
       const buildUrl = (type: string) => {
-        const params = new URLSearchParams({ type });
-        if (userId) params.append('userId', userId);
-        if (isAdmin !== undefined) params.append('isAdmin', isAdmin.toString());
-        return `/api/data?${params.toString()}`;
+        const params: Record<string, string> = { type };
+        if (userId) params.userId = userId;
+        if (isAdmin !== undefined) params.isAdmin = isAdmin.toString();
+        return getApiUrl('/api/data', params);
       };
 
       const results = await Promise.allSettled([
@@ -131,16 +133,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const saveToDb = async (collection: string, payload: any, upsertField?: string) => {
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/data', {
+      console.log(`💾 Saving ${collection} to database...`);
+      const response = await fetch(getApiUrl('/api/data'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ collection, payload, upsertField })
       });
-      if (!response.ok) throw new Error('API request failed');
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`API request failed: ${response.status} - ${errorText}`);
+      }
+      console.log(`✅ ${collection} saved successfully`);
       setIsOnline(true);
     } catch (e) {
-      console.error(`Failed to save ${collection} to MongoDB`, e);
+      console.error(`❌ Failed to save ${collection} to MongoDB:`, e);
       setIsOnline(false);
+      throw e; // Re-throw to let caller handle the error
     } finally {
       setIsSyncing(false);
     }
@@ -149,7 +157,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deleteFromDb = async (collection: string, id: string) => {
     setIsSyncing(true);
     try {
-      const response = await fetch(`/api/data?type=${collection}&id=${id}`, {
+      const response = await fetch(getApiUrl('/api/data', { type: collection, id }), {
         method: 'DELETE'
       });
       if (!response.ok) throw new Error('Delete API request failed');
