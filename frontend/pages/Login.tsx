@@ -77,22 +77,37 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const identifier = email.trim().toLowerCase();
-    const user = team.find(u => u.email?.toLowerCase() === identifier || u.code.toLowerCase() === identifier);
 
-    if (user) {
-      setTargetUser(user);
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(code);
-      // In production, this would trigger a real email service
-      console.log(`[AUTH SERVICE] Recovery OTP for ${email}: ${code}`);
-      alert(`Recovery code has been simulated. Check console for OTP if testing.`);
-      setView('OTP');
-    } else {
-      setError('Account not found.');
+    try {
+      // Fetch from user_profiles collection for recovery
+      const response = await fetch('/api/data?type=user_profiles');
+      const userProfiles = await response.json();
+
+      const user = userProfiles.find((u: any) =>
+        u.email?.toLowerCase() === identifier || u.code.toLowerCase() === identifier
+      );
+
+      if (user) {
+        // Find corresponding team member for full data
+        const teamMember = team.find(t => t.id === user.id) || user;
+        setTargetUser(teamMember);
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        setGeneratedOtp(code);
+        // In production, this would trigger a real email service
+        console.log(`[AUTH SERVICE] Recovery OTP for ${email}: ${code}`);
+        alert(`Recovery code has been simulated. Check console for OTP: ${code}`);
+        setView('OTP');
+      } else {
+        setError('Account not found.');
+      }
+    } catch (error) {
+      console.error('Recovery error:', error);
+      setError('Unable to process recovery request. Please try again.');
     }
   };
 
@@ -105,7 +120,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match.');
@@ -117,14 +132,41 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
 
     if (targetUser) {
-      const updatedTeam = team.map(u =>
-        u.id === targetUser.id ? { ...u, password: newPassword } : u
-      );
-      updateTeam(updatedTeam);
-      alert('Password updated. Please log in.');
-      setView('LOGIN');
-      setPassword('');
-      setError(null);
+      try {
+        setIsAuthenticating(true);
+
+        // Update team collection with full user data
+        const updatedTeam = team.map(u =>
+          u.id === targetUser.id ? { ...u, password: newPassword, updatedAt: new Date().toISOString() } : u
+        );
+        updateTeam(updatedTeam);
+
+        // Wait a moment for team update to sync
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Verify the update was successful by checking user_profiles
+        const verifyResponse = await fetch('/api/data?type=user_profiles');
+        const profiles = await verifyResponse.json();
+        const updatedProfile = profiles.find((p: any) => p.id === targetUser.id);
+
+        if (updatedProfile && updatedProfile.password === newPassword) {
+          alert('Password updated successfully. Please log in.');
+          setView('LOGIN');
+          setEmail(targetUser.email || '');
+          setPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setOtp('');
+          setError(null);
+        } else {
+          throw new Error('Password update verification failed');
+        }
+      } catch (error) {
+        console.error('Password reset error:', error);
+        setError('Failed to update password. Please try again.');
+      } finally {
+        setIsAuthenticating(false);
+      }
     }
   };
 

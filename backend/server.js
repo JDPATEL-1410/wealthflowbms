@@ -433,6 +433,22 @@ app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Unified WealthFlow Server running on port ${PORT}`);
-});
+// Start server with database connection
+async function startServer() {
+    try {
+        console.log('🔄 Connecting to MongoDB...');
+        await connectToDatabase();
+        console.log('✅ MongoDB connected successfully');
+
+        app.listen(PORT, () => {
+            console.log(`🚀 Unified WealthFlow Server running on port ${PORT}`);
+            console.log(`📊 API available at http://localhost:${PORT}/api/data`);
+        });
+    } catch (error) {
+        console.error('❌ Failed to start server:', error.message);
+        console.error('Please check your MongoDB connection string and try again.');
+        process.exit(1);
+    }
+}
+
+startServer();
