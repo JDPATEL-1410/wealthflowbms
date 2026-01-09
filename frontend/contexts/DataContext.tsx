@@ -70,15 +70,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       const results = await Promise.allSettled([
-        fetch(buildUrl('clients')).then(res => res.json()),
-        fetch(buildUrl('team')).then(res => res.json()),
-        fetch(buildUrl('batches')).then(res => res.json()),
-        fetch(buildUrl('transactions')).then(res => res.json()),
-        fetch(buildUrl('amc_mappings')).then(res => res.json()),
-        fetch(buildUrl('scheme_mappings')).then(res => res.json()),
-        fetch(buildUrl('config')).then(res => res.json()),
-        fetch(buildUrl('invoices')).then(res => res.json()),
-        fetch(buildUrl('user_profiles')).then(res => res.json()),
+        fetch(buildUrl('clients'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('team'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('batches'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('transactions'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('amc_mappings'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('scheme_mappings'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('config'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('invoices'), { credentials: 'include' }).then(res => res.json()),
+        fetch(buildUrl('user_profiles'), { credentials: 'include' }).then(res => res.json()),
       ]);
 
       const [c, t, b, tx, amc, sch, cfg, inv, profiles] = results.map(r =>

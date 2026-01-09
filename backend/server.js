@@ -10,9 +10,43 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+// PRODUCTION FIX: Trust Render proxy
+app.set('trust proxy', 1);
+
+// PRODUCTION FIX: Proper CORS configuration
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wealthflowbms.onrender.com';
+const allowedOrigins = [
+    FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:3000'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log('❌ CORS blocked origin:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true, // CRITICAL: Allow cookies
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    exposedHeaders: ['Set-Cookie']
+}));
+
 app.use(express.json({ limit: '50mb' }));
+
+// PRODUCTION FIX: Log all requests for debugging
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
+    next();
+});
 
 // MongoDB connection
 const uri = process.env.MONGODB_URI || 'mongodb+srv://wealthflow_admin:wealthflow123@wealthflow-cluster.e25dw6i.mongodb.net/?appName=wealthflow-cluster';
