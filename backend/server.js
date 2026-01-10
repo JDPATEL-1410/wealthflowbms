@@ -3,12 +3,13 @@ import cors from 'cors';
 import { MongoClient } from 'mongodb';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import session from 'express-session';
-import MongoStore from 'connect-mongo';
-import passport from './config/passport.js';
-import { setDatabase } from './config/passport.js';
-import authRoutes from './routes/auth.js';
 import bcrypt from 'bcryptjs';
+import dotenv from 'dotenv';
+import authRoutes from './routes/auth.js';
+import userRoutes from './routes/users.js';
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,7 +41,7 @@ app.use(cors({
             callback(new Error('Not allowed by CORS'));
         }
     },
-    credentials: true, // CRITICAL: Allow cookies
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     exposedHeaders: ['Set-Cookie']
@@ -50,37 +51,14 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // MongoDB connection
-const uri = process.env.MONGODB_URI || 'mongodb+srv://wealthflow_admin:wealthflow123@wealthflow-cluster.e25dw6i.mongodb.net/?appName=wealthflow-cluster';
-
-// Session configuration
-const SESSION_SECRET = process.env.SESSION_SECRET || 'wealthflow-secret-key-change-in-production';
-const isProduction = process.env.NODE_ENV === 'production';
-
-app.use(session({
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-        mongoUrl: uri,
-        dbName: 'wealthflow',
-        collectionName: 'sessions',
-        ttl: 24 * 60 * 60 // 1 day
-    }),
-    cookie: {
-        secure: isProduction, // true in production (HTTPS)
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 1 day
-        sameSite: isProduction ? 'none' : 'lax'
-    }
-}));
-
-// Initialize Passport
-app.use(passport.initialize());
-app.use(passport.session());
+const uri = process.env.MONGODB_URI;
+if (!uri) {
+    console.error('❌ MONGODB_URI is not defined in environment variables');
+}
 
 // PRODUCTION FIX: Log all requests for debugging
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'} - Auth: ${req.isAuthenticated()}`);
+    console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
     next();
 });
 
@@ -101,11 +79,8 @@ async function connectToDatabase() {
         cachedClient = client;
         cachedDb = db;
 
-        // Initialize database with default admin user if team collection is empty
+        // Initialize database
         await initializeDatabase(db);
-
-        // Set database for Passport
-        setDatabase(db);
 
         // Make db available to routes
         app.locals.db = db;
@@ -117,19 +92,28 @@ async function connectToDatabase() {
     }
 }
 
-// Initialize database with default data if collections are empty
+// Initialize database with default data and indexes
 async function initializeDatabase(db) {
     try {
         console.log('🔍 Checking database initialization...');
 
+        // Create unique indexes for email and employeeCode (code)
+        console.log('⚡ Creating unique indexes...');
+        try {
+            await db.collection('user_profiles').createIndex({ email: 1 }, { unique: true });
+            await db.collection('user_profiles').createIndex({ code: 1 }, { unique: true });
+            console.log('✅ Unique indexes created for user_profiles');
+        } catch (idxError) {
+            console.log('ℹ️ Indexes might already exist or there are duplicates:', idxError.message);
+        }
+
         // STEP 1: Initialize user_profiles collection with default admin
-        const userProfilesCount = await db.collection('user_profiles').countDocuments();
+        const adminEmail = 'admin@wealthflow.com';
+        const existingAdmin = await db.collection('user_profiles').findOne({ email: adminEmail });
 
-        if (userProfilesCount === 0) {
-            console.log('📋 Creating user_profiles collection with default admin...');
-
-            // Hash default admin password
-            const hashedPassword = await bcrypt.hash('admin', 10);
+        if (!existingAdmin) {
+            console.log('📋 Creating default admin profile...');
+            const hashedPassword = await bcrypt.hash('admin123', 10);
 
             const defaultAdminProfile = {
                 id: 'admin_root',
@@ -137,8 +121,8 @@ async function initializeDatabase(db) {
                 code: 'ADMIN-001',
                 role: 'ADMIN',
                 level: 1,
-                email: 'admin@wealthflow.com',
-                password: hashedPassword, // Hashed password
+                email: adminEmail,
+                passwordHash: hashedPassword,
                 bankDetails: {
                     accountName: '',
                     accountNumber: '',
@@ -151,131 +135,79 @@ async function initializeDatabase(db) {
             };
 
             await db.collection('user_profiles').insertOne(defaultAdminProfile);
-            console.log('✅ Default admin profile created in user_profiles');
+            console.log('✅ Default admin profile created');
         } else {
-            console.log(`✅ Found ${userProfilesCount} user profile(s) in database`);
-
-            // EMERGENCY CHECK: Ensure existing admin has a hashed password
-            const adminUser = await db.collection('user_profiles').findOne({ email: 'admin@wealthflow.com' });
-            if (adminUser && adminUser.password === 'admin') {
-                console.log('🛡️ Plain-text admin password detected. Hashing for security...');
-                const hashedPassword = await bcrypt.hash('admin', 10);
+            // Migrating 'password' to 'passwordHash' if necessary
+            if (existingAdmin.password && !existingAdmin.passwordHash) {
+                console.log('🛡️ Migrating admin password to passwordHash...');
                 await db.collection('user_profiles').updateOne(
-                    { email: 'admin@wealthflow.com' },
-                    { $set: { password: hashedPassword } }
+                    { _id: existingAdmin._id },
+                    {
+                        $set: { passwordHash: existingAdmin.password },
+                        $unset: { password: "" }
+                    }
                 );
-                console.log('✅ Admin password hashed successfully');
             }
         }
 
-        // STEP 2: Sync team collection with user_profiles
-        // Ensure all team members have corresponding user profiles
-        const teamMembers = await db.collection('team').find({}).toArray();
-        const userProfiles = await db.collection('user_profiles').find({}).toArray();
-        const profileIds = new Set(userProfiles.map(p => p.id));
+        // STEP 2: Sync and Migrate existing users - normalize everything
+        console.log('🔄 Normalizing user data...');
+        const allUsers = await db.collection('user_profiles').find({}).toArray();
+        for (const user of allUsers) {
+            const updates = {};
+            let changed = false;
 
-        let migratedCount = 0;
-        for (const member of teamMembers) {
-            if (!profileIds.has(member.id)) {
-                // Migrate team member to user_profiles
-                const userProfile = {
-                    id: member.id,
-                    name: member.name,
-                    code: member.code,
-                    role: member.role,
-                    level: member.level,
-                    email: member.email,
-                    password: member.password,
-                    bankDetails: member.bankDetails || {
-                        accountName: '',
-                        accountNumber: '',
-                        bankName: '',
-                        ifscCode: ''
-                    },
-                    isActive: true,
-                    createdAt: member.createdAt || new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
+            // Normalize email
+            if (user.email && user.email !== user.email.toLowerCase().trim()) {
+                updates.email = user.email.toLowerCase().trim();
+                changed = true;
+            }
 
-                await db.collection('user_profiles').insertOne(userProfile);
-                migratedCount++;
-                console.log(`✅ Migrated user ${member.name} to user_profiles`);
+            // Normalize code
+            if (user.code && user.code !== user.code.trim()) {
+                updates.code = user.code.trim();
+                changed = true;
+            }
+
+            // Migrate password to passwordHash
+            if (user.password && !user.passwordHash) {
+                updates.passwordHash = user.password;
+                changed = true;
+            }
+
+            if (changed) {
+                await db.collection('user_profiles').updateOne(
+                    { _id: user._id },
+                    {
+                        $set: { ...updates, updatedAt: new Date().toISOString() },
+                        ...(updates.passwordHash ? { $unset: { password: "" } } : {})
+                    }
+                );
             }
         }
 
-        if (migratedCount > 0) {
-            console.log(`✅ Migrated ${migratedCount} team member(s) to user_profiles`);
-        }
-
-        // STEP 3: Check if team collection needs default admin
-        const teamCount = await db.collection('team').countDocuments();
-
-        if (teamCount === 0) {
-            console.log('📋 Initializing team collection with default admin...');
-
-            const defaultAdmin = {
-                id: 'admin_root',
-                name: 'System Administrator',
-                code: 'ADMIN-001',
-                role: 'ADMIN',
-                level: 1,
-                email: 'admin@wealthflow.com',
-                password: 'admin',
-                bankDetails: {
-                    accountName: '',
-                    accountNumber: '',
-                    bankName: '',
-                    ifscCode: ''
-                },
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            };
-
-            await db.collection('team').insertOne(defaultAdmin);
-            console.log('✅ Default admin user created in team collection');
-        }
-
-        // STEP 4: Check if config collection is empty
+        // STEP 3: Check if config collection is empty
         const configCount = await db.collection('config').countDocuments();
-
         if (configCount === 0) {
-            console.log('📋 Initializing database with default config...');
-
             const defaultConfig = {
                 id: 'global_config',
                 name: 'Standard Payout Rules',
                 companyExpensePct: 15,
-                levels: {
-                    1: 15,
-                    2: 15,
-                    3: 15,
-                    4: 15,
-                    5: 15,
-                    6: 5,
-                    0: 20
-                },
+                levels: { 1: 15, 2: 15, 3: 15, 4: 15, 5: 15, 6: 5, 0: 20 },
                 levelNames: {
-                    1: 'Corporate House',
-                    2: 'Partner Level 2',
-                    3: 'Regional Level 3',
-                    4: 'Zonal Level 4',
-                    5: 'Manager Level 5',
-                    6: 'Relationship Manager (L6)',
-                    0: 'Super Holding'
+                    1: 'Corporate House', 2: 'Partner Level 2', 3: 'Regional Level 3',
+                    4: 'Zonal Level 4', 5: 'Manager Level 5', 6: 'Relationship Manager (L6)', 0: 'Super Holding'
                 },
                 scope: 'GLOBAL',
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
-
             await db.collection('config').insertOne(defaultConfig);
-            console.log('✅ Default config created successfully');
         }
 
         console.log('✅ Database initialization complete');
     } catch (error) {
         console.error('⚠️ Database initialization error:', error);
-        // Don't throw - allow app to continue even if seeding fails
     }
 }
 
@@ -286,15 +218,25 @@ const VALID_COLLECTIONS = [
 
 // Authentication Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 
 // API Routes
-app.get('/api/data', async (req, res) => {
+app.get('/api/data', authenticate, async (req, res) => {
     try {
         const { db } = await connectToDatabase();
-        const { type, userId, isAdmin } = req.query;
+        const { type } = req.query;
+        const userId = req.user.id;
+        const isAdmin = req.user.role === 'ADMIN';
+
         if (!type || !VALID_COLLECTIONS.includes(type)) {
             return res.status(400).json({ error: 'Invalid or missing collection type' });
         }
+
+        // Security: hide passwords and sensitive data
+        const projection = (type === 'team' || type === 'user_profiles')
+            ? { password: 0, passwordHash: 0 }
+            : {};
+
         let filter = {};
         if (isAdmin !== 'true' && userId) {
             switch (type) {
@@ -338,20 +280,28 @@ app.get('/api/data', async (req, res) => {
         }
         const options = {};
         if (type === 'team' || type === 'user_profiles') {
-            options.projection = { password: 0 };
+            options.projection = { passwordHash: 0, password: 0 };
         }
 
         const data = await db.collection(type).find(filter, options).toArray();
         res.status(200).json(data || []);
     } catch (error) {
+        console.error('Error fetching data:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-app.post('/api/data', async (req, res) => {
+// Generic POST for other data (not user creation)
+app.post('/api/data', authenticate, async (req, res) => {
     try {
         const { db } = await connectToDatabase();
         const { collection, payload, upsertField } = req.body;
+
+        // Block user_profiles and team from generic POST to ensure proper hashing/validation
+        if (collection === 'user_profiles' || collection === 'team') {
+            return res.status(403).json({ error: 'Use dedicated user management endpoints' });
+        }
+
         if (!collection || !VALID_COLLECTIONS.includes(collection) || !payload) {
             return res.status(400).json({ error: 'Invalid collection or missing payload' });
         }
@@ -359,22 +309,7 @@ app.post('/api/data', async (req, res) => {
         const filterKey = upsertField || 'id';
 
         if (Array.isArray(payload)) {
-            // SECURITY: Hash passwords if updating team collection in bulk
-            let processedPayload = payload.map(item => ({ ...item })); // Deep-ish copy of array items
-
-            if (collection === 'team') {
-                console.log(`🔐 Checking passwords for ${processedPayload.length} team members...`);
-                for (let i = 0; i < processedPayload.length; i++) {
-                    const pass = processedPayload[i].password;
-                    if (pass && typeof pass === 'string' && !pass.startsWith('$2a$')) {
-                        console.log(`🔑 Hashing password for: ${processedPayload[i].name || processedPayload[i].email}`);
-                        processedPayload[i].password = await bcrypt.hash(pass, 10);
-                    }
-                }
-            }
-
-            const operations = processedPayload.map(item => {
-                // Remove _id from set bit to avoid immutable field error
+            const operations = payload.map(item => {
                 const { _id, ...updateData } = item;
                 return {
                     updateOne: {
@@ -384,114 +319,44 @@ app.post('/api/data', async (req, res) => {
                     }
                 };
             });
-
             const result = await db.collection(collection).bulkWrite(operations);
-
-            // SYNC: If updating team collection, also sync to user_profiles
-            if (collection === 'team') {
-                console.log(`🔄 Syncing ${processedPayload.length} team member(s) to user_profiles...`);
-                const profileOperations = processedPayload.map(member => {
-                    const { _id, password, ...profileData } = member;
-                    return {
-                        updateOne: {
-                            filter: { id: member.id },
-                            update: {
-                                $set: {
-                                    ...profileData,
-                                    password: password, // Use hashed password
-                                    isActive: true,
-                                    updatedAt: now
-                                },
-                                $setOnInsert: {
-                                    createdAt: member.createdAt || now
-                                }
-                            },
-                            upsert: true
-                        }
-                    };
-                });
-                await db.collection('user_profiles').bulkWrite(profileOperations);
-                console.log('✅ User profiles synced successfully');
-            }
-
             res.status(200).json({
                 success: true,
                 count: (result.upsertedCount || 0) + (result.modifiedCount || 0)
             });
         } else {
             const filterValue = payload[filterKey] || payload.id;
-
-            // SECURITY: If this is the team collection and a password is provided, hash it
-            let finalPayload = { ...payload };
-            if (collection === 'team' && payload.password && typeof payload.password === 'string' && !payload.password.startsWith('$2a$')) {
-                console.log(`🔐 Hashing password for team member ${payload.name}...`);
-                const salt = await bcrypt.genSalt(10);
-                finalPayload.password = await bcrypt.hash(payload.password, salt);
-            }
-
-            // Remove _id from set bit
-            const { _id, ...cleanPayload } = finalPayload;
-
+            const { _id, ...cleanPayload } = payload;
             await db.collection(collection).updateOne(
                 { [filterKey]: filterValue },
                 { $set: { ...cleanPayload, updatedAt: now }, $setOnInsert: { createdAt: now } },
                 { upsert: true }
             );
-
-            // SYNC: If updating team collection, also sync to user_profiles
-            if (collection === 'team') {
-                console.log(`🔄 Syncing team member ${payload.name} to user_profiles...`);
-                const { _id: dummy, password: finalPassword, ...syncData } = finalPayload;
-                await db.collection('user_profiles').updateOne(
-                    { id: payload.id },
-                    {
-                        $set: {
-                            ...syncData,
-                            password: finalPassword,
-                            isActive: true,
-                            updatedAt: now
-                        },
-                        $setOnInsert: {
-                            createdAt: payload.createdAt || now
-                        }
-                    },
-                    { upsert: true }
-                );
-                console.log('✅ User profile synced successfully');
-            }
-
             res.status(200).json({ success: true });
         }
     } catch (error) {
-        console.error(`❌ Error in POST /api/data for ${collection || 'unknown'}:`, error);
+        console.error(`❌ Error in POST /api/data for ${req.body.collection}:`, error);
         res.status(500).json({ error: error.message });
     }
 });
 
-app.delete('/api/data', async (req, res) => {
+app.delete('/api/data', authenticate, async (req, res) => {
     try {
         const { db } = await connectToDatabase();
         const { action, type, id } = req.query;
 
         if (action === 'reset') {
-            console.log('⚠️ CRITICAL: Resetting all data...');
             for (const col of VALID_COLLECTIONS) {
-                // Skip user_profiles to preserve user accounts
                 if (col !== 'user_profiles') {
                     await db.collection(col).deleteMany({});
-                    console.log(`✅ Cleared ${col} collection`);
                 }
             }
-            // Mark all user profiles as inactive instead of deleting
             await db.collection('user_profiles').updateMany({}, { $set: { isActive: false } });
-            console.log('✅ Marked all user profiles as inactive');
             return res.status(200).json({ success: true });
         }
 
         if (type && id && VALID_COLLECTIONS.includes(type)) {
-            // PROTECTION: Prevent deletion of user_profiles
-            if (type === 'user_profiles') {
-                console.log(`⚠️ Cannot delete user profile ${id}. Marking as inactive instead.`);
+            if (type === 'user_profiles' || type === 'team') {
                 await db.collection('user_profiles').updateOne(
                     { id: id },
                     { $set: { isActive: false, updatedAt: new Date().toISOString() } }
@@ -499,44 +364,9 @@ app.delete('/api/data', async (req, res) => {
                 return res.status(200).json({ success: true, message: 'User marked as inactive' });
             }
 
-            // SYNC: If deleting from team, mark user profile as inactive (don't delete)
-            if (type === 'team') {
-                console.log(`🔄 Marking user profile ${id} as inactive...`);
-                await db.collection('user_profiles').updateOne(
-                    { id: id },
-                    { $set: { isActive: false, updatedAt: new Date().toISOString() } }
-                );
-                console.log('✅ User profile marked as inactive');
-            }
-
-            // COMPREHENSIVE CASCADE DELETE for batches
             if (type === 'batches') {
-                console.log(`Starting cascade delete for batch ${id}...`);
-
-                // Step 1: Get all transactions from this batch to find affected clients
-                const transactionsToDelete = await db.collection('transactions').find({ batchId: id }).toArray();
-                const affectedClientIds = [...new Set(transactionsToDelete.map(tx => tx.mappedClientId).filter(Boolean))];
-
-                console.log(`Found ${transactionsToDelete.length} transactions affecting ${affectedClientIds.length} clients`);
-
-                // Step 2: Delete all transactions from this batch
-                const txDeleteResult = await db.collection('transactions').deleteMany({ batchId: id });
-                console.log(`Deleted ${txDeleteResult.deletedCount} transactions`);
-
-                // Step 3: Find and delete orphaned auto-created clients
-                let orphanedClientsDeleted = 0;
-                for (const clientId of affectedClientIds) {
-                    if (clientId.startsWith('c_auto_')) {
-                        const remainingTxCount = await db.collection('transactions').countDocuments({ mappedClientId: clientId });
-                        if (remainingTxCount === 0) {
-                            await db.collection('clients').deleteOne({ id: clientId });
-                            orphanedClientsDeleted++;
-                            console.log(`Deleted orphaned client ${clientId}`);
-                        }
-                    }
-                }
-
-                console.log(`Cascade delete summary: ${txDeleteResult.deletedCount} transactions, ${orphanedClientsDeleted} orphaned clients`);
+                await db.collection('transactions').deleteMany({ batchId: id });
+                // We don't delete auto-clients here to keep it simple and safe for now
             }
 
             await db.collection(type).deleteOne({ id: id });
@@ -552,25 +382,18 @@ app.delete('/api/data', async (req, res) => {
 const frontendPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendPath));
 
-// Catch-all route for SPA
 app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-// Start server with database connection
 async function startServer() {
     try {
-        console.log('🔄 Connecting to MongoDB...');
         await connectToDatabase();
-        console.log('✅ MongoDB connected successfully');
-
         app.listen(PORT, () => {
             console.log(`🚀 Unified WealthFlow Server running on port ${PORT}`);
-            console.log(`📊 API available at http://localhost:${PORT}/api/data`);
         });
     } catch (error) {
         console.error('❌ Failed to start server:', error.message);
-        console.error('Please check your MongoDB connection string and try again.');
         process.exit(1);
     }
 }

@@ -10,6 +10,7 @@ import { Login } from './pages/Login';
 import { TeamMember, Role } from './types';
 import { DataProvider, useData } from './contexts/DataContext';
 import { RefreshCcw } from 'lucide-react';
+import { authFetch } from './config/apiConfig';
 
 const AppContent: React.FC = () => {
   const { team, loading, setCurrentUser: setContextUser, refreshDashboard } = useData();
@@ -19,31 +20,34 @@ const AppContent: React.FC = () => {
   const [sessionRestored, setSessionRestored] = useState(false);
 
 
-  // Check authentication status with Passport.js on app load
+  // Check authentication status with JWT on app load
   useEffect(() => {
     if (sessionRestored) return;
 
     const checkAuthStatus = async () => {
       try {
-        console.log('🔍 Checking authentication status...');
+        const token = localStorage.getItem('wealthflow_token');
+        if (!token) {
+          console.log('ℹ️ No token found');
+          localStorage.removeItem('wealthflow_user');
+          setSessionRestored(true);
+          return;
+        }
 
-        // Check if user is authenticated via Passport session
-        const response = await fetch('/api/auth/status', {
-          credentials: 'include' // IMPORTANT: Send session cookie
-        });
+        console.log('🔍 Verifying authentication token...');
 
+        const response = await authFetch('/api/auth/me');
         const data = await response.json();
 
-        if (data.authenticated && data.user) {
-          console.log('✅ User authenticated:', data.user);
+        if (response.ok && data.success && data.user) {
+          console.log('✅ Token verified:', data.user);
 
-          // Create TeamMember object from authenticated user
           const teamMember: TeamMember = {
             id: data.user.id,
-            name: data.user.name,
-            code: data.user.code || '',
+            name: data.user.name || data.user.fullName,
+            code: data.user.code || data.user.employeeCode || '',
             role: data.user.role,
-            level: data.user.level,
+            level: data.user.level || data.user.hierarchyLevel,
             email: data.user.email,
             password: '',
             bankDetails: data.user.bankDetails || {
@@ -57,17 +61,14 @@ const AppContent: React.FC = () => {
           setCurrentUser(teamMember);
           setContextUser(teamMember);
           setIsLoggedIn(true);
-
-          // Also save to localStorage for backward compatibility
           localStorage.setItem('wealthflow_user', JSON.stringify(teamMember));
         } else {
-          console.log('ℹ️ No active session');
-          // Clear any old localStorage data
+          console.log('❌ Token invalid or expired');
+          localStorage.removeItem('wealthflow_token');
           localStorage.removeItem('wealthflow_user');
         }
       } catch (error) {
-        console.error('❌ Auth check failed:', error);
-        localStorage.removeItem('wealthflow_user');
+        console.error('❌ Auth verification failed:', error);
       } finally {
         setSessionRestored(true);
       }
@@ -84,7 +85,6 @@ const AppContent: React.FC = () => {
       const updatedUser = team.find(t => t.id === currentUser.id);
       if (updatedUser) {
         setCurrentUser(updatedUser);
-        // Update localStorage with latest user data
         localStorage.setItem('wealthflow_user', JSON.stringify(updatedUser));
       }
     }
@@ -92,33 +92,24 @@ const AppContent: React.FC = () => {
 
   const handleLogin = (user: TeamMember) => {
     setCurrentUser(user);
-    setContextUser(user); // Set user in DataContext
+    setContextUser(user);
     setIsLoggedIn(true);
     setActivePage('dashboard');
-    // Save user session to localStorage
     localStorage.setItem('wealthflow_user', JSON.stringify(user));
-    // Refresh data with user-specific filtering
     refreshDashboard(user);
   };
 
   const handleLogout = async () => {
     try {
       console.log('🚪 Logging out...');
-
-      // Call Passport.js logout endpoint
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include' // IMPORTANT: Send session cookie
-      });
-
-      console.log('✅ Logout successful');
+      await authFetch('/api/auth/logout', { method: 'POST' });
     } catch (error) {
       console.error('❌ Logout error:', error);
     } finally {
-      // Clear frontend state regardless of API call result
       setCurrentUser(null);
       setContextUser(null);
       setIsLoggedIn(false);
+      localStorage.removeItem('wealthflow_token');
       localStorage.removeItem('wealthflow_user');
     }
   };

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { PieChart, Mail, Lock, Key, ArrowRight, ShieldCheck, RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { PieChart, Mail, Lock, Key, ArrowRight, ShieldCheck, RefreshCw, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { TeamMember } from '../types';
 import { useData } from '../contexts/DataContext';
 
@@ -11,62 +11,56 @@ interface LoginProps {
 type AuthView = 'LOGIN' | 'FORGOT' | 'OTP' | 'RESET';
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const { team, updateTeam, isOnline, loading } = useData();
+  const { isOnline, loading } = useData();
   const [view, setView] = useState<AuthView>('LOGIN');
-  const [email, setEmail] = useState('admin@wealthflow.com');
-  const [password, setPassword] = useState('admin');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Forgot Password States
-  const [targetUser, setTargetUser] = useState<TeamMember | null>(null);
   const [otp, setOtp] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsAuthenticating(true);
 
-    const identifier = email.trim().toLowerCase();
-    const pass = password.trim();
-
     try {
-      console.log('🔐 Attempting login with Passport.js...');
+      console.log('🔐 Attempting login...');
 
-      // Use new Passport.js authentication endpoint
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include', // IMPORTANT: Send cookies for session
         body: JSON.stringify({
-          email: identifier,
-          password: pass
+          identifier: identifier.trim(),
+          password: password.trim()
         })
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle authentication errors
         throw new Error(data.error || 'Login failed');
       }
 
-      if (data.success && data.user) {
+      if (data.success && data.token && data.user) {
         console.log('✅ Login successful:', data.user);
+
+        // Store JWT token
+        localStorage.setItem('wealthflow_token', data.token);
 
         // Create TeamMember object from authenticated user
         const teamMember: TeamMember = {
           id: data.user.id,
-          name: data.user.name,
-          code: data.user.code || '',
+          name: data.user.name || data.user.fullName,
+          code: data.user.code || data.user.employeeCode || '',
           role: data.user.role,
-          level: data.user.level,
+          level: data.user.level || data.user.hierarchyLevel,
           email: data.user.email,
-          password: '', // Don't store password in frontend
+          password: '',
           bankDetails: data.user.bankDetails || {
             accountName: '',
             accountNumber: '',
@@ -91,93 +85,21 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const identifier = email.trim().toLowerCase();
-
-    try {
-      // Fetch from user_profiles collection for recovery
-      const response = await fetch('/api/data?type=user_profiles');
-      const userProfiles = await response.json();
-
-      const user = userProfiles.find((u: any) =>
-        u.email?.toLowerCase() === identifier || u.code.toLowerCase() === identifier
-      );
-
-      if (user) {
-        // Find corresponding team member for full data
-        const teamMember = team.find(t => t.id === user.id) || user;
-        setTargetUser(teamMember);
-
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        setGeneratedOtp(code);
-        // In production, this would trigger a real email service
-        console.log(`[AUTH SERVICE] Recovery OTP for ${email}: ${code}`);
-        alert(`Recovery code has been simulated. Check console for OTP: ${code}`);
-        setView('OTP');
-      } else {
-        setError('Account not found.');
-      }
-    } catch (error) {
-      console.error('Recovery error:', error);
-      setError('Unable to process recovery request. Please try again.');
-    }
+    // OTP recovery is currently simulated
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedOtp(code);
+    console.log(`[AUTH SERVICE] Recovery OTP for ${identifier}: ${code}`);
+    alert(`Recovery code has been simulated for ${identifier}. Check console for OTP: ${code}`);
+    setView('OTP');
   };
 
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (otp === generatedOtp) {
-      setView('RESET');
+      alert('Password reset functionality is currently restricted. Please contact Administrator.');
+      setView('LOGIN');
     } else {
       setError('Invalid code.');
-    }
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-    if (newPassword.length < 4) {
-      setError('Password too short.');
-      return;
-    }
-
-    if (targetUser) {
-      try {
-        setIsAuthenticating(true);
-
-        // Update team collection with full user data
-        const updatedTeam = team.map(u =>
-          u.id === targetUser.id ? { ...u, password: newPassword, updatedAt: new Date().toISOString() } : u
-        );
-        updateTeam(updatedTeam);
-
-        // Wait a moment for team update to sync
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        // Verify the update was successful by checking user_profiles
-        const verifyResponse = await fetch('/api/data?type=user_profiles');
-        const profiles = await verifyResponse.json();
-        const updatedProfile = profiles.find((p: any) => p.id === targetUser.id);
-
-        if (updatedProfile && updatedProfile.password === newPassword) {
-          alert('Password updated successfully. Please log in.');
-          setView('LOGIN');
-          setEmail(targetUser.email || '');
-          setPassword('');
-          setNewPassword('');
-          setConfirmPassword('');
-          setOtp('');
-          setError(null);
-        } else {
-          throw new Error('Password update verification failed');
-        }
-      } catch (error) {
-        console.error('Password reset error:', error);
-        setError('Failed to update password. Please try again.');
-      } finally {
-        setIsAuthenticating(false);
-      }
     }
   };
 
@@ -214,8 +136,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       <input
                         type="text"
                         required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
                         className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium"
                         placeholder="ID or registered email"
                       />
@@ -279,7 +201,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <Key className="w-8 h-8 text-blue-600" />
                   </div>
                   <h1 className="text-2xl font-bold text-slate-900">Reset Access</h1>
-                  <p className="text-slate-500 text-sm mt-1">Enter registered email for recovery</p>
+                  <p className="text-slate-500 text-sm mt-1">Enter ID or email for recovery</p>
                 </div>
 
                 {error && (
@@ -289,12 +211,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 )}
 
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Registered Email</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">ID or Email</label>
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
                   />
                 </div>
@@ -338,49 +260,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition">Verify Code</button>
                   <p className="text-xs text-slate-400">Didn't receive it? <button type="button" onClick={handleSendOtp} className="text-blue-600 font-bold">Resend</button></p>
                 </div>
-              </form>
-            )}
-
-            {view === 'RESET' && (
-              <form onSubmit={handleResetPassword} className="space-y-6">
-                <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle className="w-8 h-8 text-green-600" />
-                  </div>
-                  <h1 className="text-2xl font-bold text-slate-900">Set Password</h1>
-                  <p className="text-slate-500 text-sm mt-1">Secure your account</p>
-                </div>
-
-                {error && (
-                  <div className="bg-red-50 border border-red-100 text-red-600 p-3 rounded-xl text-xs font-bold flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-2" /> {error}
-                  </div>
-                )}
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">New Password</label>
-                    <input
-                      type="password"
-                      required
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Confirm Password</label>
-                    <input
-                      type="password"
-                      required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition font-medium"
-                    />
-                  </div>
-                </div>
-
-                <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition">Update & Finish</button>
               </form>
             )}
           </div>

@@ -3,13 +3,14 @@ import React, { useState, useMemo } from 'react';
 import { Users, Search, Plus, Edit2, X, UserCheck, Shield, ChevronRight, Tags, Building, Database, Save, AlertCircle, Key, Copy, Check, Mail, Trash2, RefreshCcw, UserPlus } from 'lucide-react';
 import { Client, TeamMember, Role, MappingEntry } from '../types';
 import { useData } from '../contexts/DataContext';
+import { authFetch } from '../config/apiConfig';
 
 interface ClientsAndHierarchyProps {
   currentUser: TeamMember;
 }
 
 export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ currentUser }) => {
-  const { clients, updateClients, deleteClient, team, updateTeam, deleteTeamMember, globalConfig, transactions, amcMappings, schemeMappings, updateAmcMappings, updateSchemeMappings } = useData();
+  const { clients, updateClients, deleteClient, team, updateTeam, deleteTeamMember, globalConfig, transactions, amcMappings, schemeMappings, updateAmcMappings, updateSchemeMappings, refreshDashboard } = useData();
 
   const isAdmin = currentUser.role === Role.ADMIN;
   const [activeTab, setActiveTab] = useState<'hierarchy' | 'clients' | 'standardize'>(isAdmin ? 'hierarchy' : 'clients');
@@ -111,7 +112,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
     if (!isAdmin) return;
     if (member) {
       setEditingMember(member);
-      setMemberForm(member);
+      setMemberForm({ ...member, password: '' });
     } else {
       setEditingMember(null);
       setMemberForm({ name: '', code: '', role: Role.OPS, level: 6, email: '', password: '' });
@@ -121,53 +122,49 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
 
   const saveTeamMember = async () => {
     // Validation
-    if (!memberForm.name || !memberForm.code) {
-      alert("❌ Name and Code are required.");
+    if (!memberForm.name || !memberForm.code || !memberForm.email) {
+      alert("❌ Name, Employee Code, and Email are required.");
       return;
     }
 
-    // Check for login credentials if creating new user
-    if (!editingMember) {
-      if (!memberForm.email || !memberForm.password) {
-        const confirm = window.confirm(
-          "⚠️ No login credentials provided!\n\n" +
-          "Email and Password are required for the user to sign in.\n\n" +
-          "Do you want to continue anyway? (User won't be able to log in)"
-        );
-        if (!confirm) return;
-      }
+    if (!editingMember && (!memberForm.password || memberForm.password.length < 4)) {
+      alert("❌ Password (min 4 chars) is required for new users.");
+      return;
     }
 
     try {
+      const payload = {
+        fullName: memberForm.name,
+        employeeCode: memberForm.code,
+        role: memberForm.role,
+        hierarchyLevel: memberForm.level,
+        email: memberForm.email,
+        password: memberForm.password,
+        isActive: true
+      };
+
+      let response;
       if (editingMember) {
-        await updateTeam(team.map(m => m.id === editingMember.id ? { ...m, ...memberForm } as TeamMember : m));
-        alert(`✅ User "${memberForm.name}" updated successfully!`);
+        response = await authFetch(`/api/users/${editingMember.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload)
+        });
       } else {
-        const newMember: TeamMember = {
-          id: `tm_${Date.now()}`,
-          name: memberForm.name!,
-          code: memberForm.code!,
-          role: memberForm.role || Role.OPS,
-          level: memberForm.level ?? 6,
-          email: memberForm.email,
-          password: memberForm.password
-        };
-
-        console.log('Creating new user:', newMember);
-        await updateTeam([...team, newMember]);
-        console.log('User saved to database');
-
-        // Success message with login credentials
-        const loginInfo = memberForm.email && memberForm.password
-          ? `\n\n📧 Login Email: ${memberForm.email}\n🔑 Password: ${memberForm.password}\n\n✅ User can now sign in!\n\n💾 User has been saved to database and will persist across refreshes.`
-          : `\n\n⚠️ No login credentials set - user cannot sign in yet.`;
-
-        alert(`✅ User "${memberForm.name}" created successfully!${loginInfo}`);
+        response = await authFetch('/api/users', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
       }
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to save user');
+
+      alert(`✅ User "${memberForm.name}" ${editingMember ? 'updated' : 'created'} successfully!`);
       setIsTeamModalOpen(false);
+      refreshDashboard(); // Refresh all data to see the new member
     } catch (error: any) {
       console.error('Error saving team member:', error);
-      alert(`❌ Failed to save user: ${error.message || 'Please try again.'}`);
+      alert(`❌ Error: ${error.message}`);
     }
   };
 
@@ -177,12 +174,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
       return;
     }
 
-    const isUsedInClients = clients.some(c => Object.values(c.hierarchy).includes(member.id));
-    const message = isUsedInClients
-      ? `Warning: ${member.name} is mapped to active clients. Deleting them will leave those layers unassigned. Are you sure?`
-      : `Permanently delete ${member.name}?`;
-
-    if (window.confirm(message)) {
+    if (window.confirm(`Permanently deactivate user "${member.name}"?`)) {
       deleteTeamMember(member.id);
     }
   };
@@ -212,11 +204,10 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
         level0Id: '', level1Id: '', level2Id: '', level3Id: '', level4Id: '', level5Id: '', level6Id: ''
       };
 
-      // Auto-assign hierarchy for non-admins based on their login level
       if (!isAdmin) {
         const userLevelKey = `level${currentUser.level}Id` as keyof typeof hierarchy;
         hierarchy[userLevelKey] = currentUser.id;
-        hierarchy.level1Id = 'tm1'; // Default house
+        hierarchy.level1Id = 'tm1';
       }
 
       const newClient: Client = {
@@ -227,7 +218,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
         hierarchy
       };
       updateClients([...clients, newClient]);
-      alert(`✅ Client "${clientForm.name}" created successfully!\n\n📋 PAN: ${clientForm.pan!.toUpperCase()}\n📁 Folios: ${clientForm.folios?.length || 0}`);
+      alert(`✅ Client "${clientForm.name}" created successfully!`);
     }
     setIsClientModalOpen(false);
   };
@@ -239,7 +230,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
   };
 
   const handleCopyCredentials = (member: TeamMember) => {
-    const text = `WealthFlow BMS Credentials\n--------------------------\nUser: ${member.name}\nLogin ID: ${member.email || member.code}\nPassword: ${member.password || 'Not Set'}\nLink: wealthflow.bms.app/login`;
+    const text = `WealthFlow BMS Credentials\n--------------------------\nUser: ${member.name}\nLogin ID: ${member.email || member.code}\nLink: ${window.location.origin}/login`;
     navigator.clipboard.writeText(text);
     setCopiedId(member.id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -319,17 +310,13 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                   <td className="px-6 py-4"><span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase bg-slate-100 text-slate-800 border border-slate-200">{member.role}</span></td>
                   <td className="px-6 py-4 font-medium text-slate-600">{getLevelLabel(member.level)}</td>
                   <td className="px-6 py-4">
-                    {member.password ? (
-                      <button
-                        onClick={() => handleCopyCredentials(member)}
-                        className={`flex items-center px-2 py-1 rounded-md text-xs font-bold transition ${copiedId === member.id ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
-                      >
-                        {copiedId === member.id ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
-                        {copiedId === member.id ? 'Copied' : 'Share Login'}
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 font-bold uppercase italic tracking-tighter">No Pwd Set</span>
-                    )}
+                    <button
+                      onClick={() => handleCopyCredentials(member)}
+                      className={`flex items-center px-2 py-1 rounded-md text-xs font-bold transition ${copiedId === member.id ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
+                    >
+                      {copiedId === member.id ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
+                      {copiedId === member.id ? 'Copied' : 'Share ID'}
+                    </button>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end space-x-1">
@@ -423,13 +410,6 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
               </div>
             </div>
 
-            <div className="p-4 bg-emerald-50 border-b border-emerald-100 flex items-start">
-              <RefreshCcw className="w-4 h-4 text-emerald-600 mr-3 mt-0.5 animate-spin-slow" />
-              <p className="text-xs text-emerald-700 leading-relaxed font-bold uppercase tracking-tight">
-                Auto-Mapping Active: Newly discovered names are automatically registered. Use this table only for custom grouping or name corrections.
-              </p>
-            </div>
-
             <div className="overflow-auto flex-1">
               <table className="w-full text-sm text-left">
                 <thead className="bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -469,15 +449,15 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
 
       {/* Admin Mapping Modal */}
       {isAdmin && isMappingModalOpen && selectedClientForMapping && mappingForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-white">
               <h3 className="font-black text-xl text-slate-900 tracking-tighter uppercase">Map Hierarchy: {selectedClientForMapping.name}</h3>
               <button onClick={() => setIsMappingModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><X className="w-5 h-5 text-slate-400" /></button>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 max-h-[70vh] overflow-y-auto">
-              {[0, 1, 2, 3, 4, 5, 6].sort((a, b) => a - b).map((level) => (
-                <div key={level} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md">
+              {[0, 1, 2, 3, 4, 5, 6].map((level) => (
+                <div key={level} className="bg-white p-4 rounded-xl border border-slate-200">
                   <label className="block text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest">{getLevelLabel(level)}</label>
                   <select
                     value={mappingForm[`level${level}Id` as keyof typeof mappingForm] || ''}
@@ -502,8 +482,8 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
 
       {/* Team Member Modal */}
       {isAdmin && isTeamModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-0 overflow-hidden animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-0 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 bg-white flex justify-between items-center">
               <h3 className="font-black text-xl text-slate-900 tracking-tighter uppercase">{editingMember ? 'Update Profile' : 'Create New User'}</h3>
               <button onClick={() => setIsTeamModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><X className="w-5 h-5 text-slate-400" /></button>
@@ -521,7 +501,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">System Role</label>
                   <select value={memberForm.role} onChange={e => setMemberForm({ ...memberForm, role: e.target.value as Role })} className="w-full border border-slate-200 p-3 rounded-xl mt-1.5 font-bold focus:ring-2 focus:ring-blue-500 transition bg-white">
@@ -534,7 +514,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                 <div className="col-span-2 sm:col-span-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hierarchy Layer</label>
                   <select value={memberForm.level} onChange={e => setMemberForm({ ...memberForm, level: Number(e.target.value) })} className="w-full border border-slate-200 p-3 rounded-xl mt-1.5 font-bold focus:ring-2 focus:ring-blue-500 transition bg-white">
-                    {[0, 1, 2, 3, 4, 5, 6].map(l => <option key={l} value={l}>Level {l}</option>)}
+                    {[0, 1, 2, 3, 4, 5, 6].map(l => <option key={l} value={l}>Level {l} ({globalConfig.levelNames[l as keyof typeof globalConfig.levelNames]})</option>)}
                   </select>
                 </div>
               </div>
@@ -548,7 +528,7 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                   </div>
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Shield className="w-3 h-3 mr-1" /> Password</label>
-                    <input type="text" placeholder="Set Password" value={memberForm.password || ''} onChange={e => setMemberForm({ ...memberForm, password: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl mt-1.5 font-bold text-sm" />
+                    <input type="text" placeholder={editingMember ? "(Leave blank to keep same)" : "Set Password"} value={memberForm.password || ''} onChange={e => setMemberForm({ ...memberForm, password: e.target.value })} className="w-full border border-slate-200 p-3 rounded-xl mt-1.5 font-bold text-sm" />
                   </div>
                 </div>
               </div>
@@ -564,8 +544,8 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
 
       {/* Client Modal */}
       {isClientModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-0 overflow-hidden animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-0 overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 bg-white flex justify-between items-center">
               <h3 className="font-black text-xl text-slate-900 tracking-tighter uppercase">{editingClient ? 'Edit Client' : 'Add New Client'}</h3>
               <button onClick={() => setIsClientModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition"><X className="w-5 h-5 text-slate-400" /></button>
@@ -590,14 +570,6 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                   className="w-full border border-slate-200 p-3 rounded-xl mt-1.5 font-bold focus:ring-2 focus:ring-blue-500 transition"
                 />
               </div>
-              {!isAdmin && (
-                <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start">
-                  <AlertCircle className="w-4 h-4 text-blue-600 mr-3 mt-0.5" />
-                  <p className="text-[10px] text-blue-700 font-bold uppercase tracking-tight">
-                    Note: This client will be automatically mapped to your hierarchy level for brokerage tracking.
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="px-8 py-6 bg-white border-t border-slate-100 flex justify-end space-x-3">
