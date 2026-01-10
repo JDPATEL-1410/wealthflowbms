@@ -7,6 +7,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import { authenticate } from './middleware/auth.js';
 
 // Load environment variables
 dotenv.config();
