@@ -18,10 +18,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// PRODUCTION FIX: Trust Render proxy
+// Trust Render proxy (needed when behind proxy)
 app.set('trust proxy', 1);
 
-// PRODUCTION FIX: Proper CORS configuration
+// CORS configuration
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://wealthflowbms.onrender.com';
 const allowedOrigins = [
     FRONTEND_URL,
@@ -30,23 +30,26 @@ const allowedOrigins = [
     'http://localhost:3000'
 ];
 
-app.use(cors({
-    origin: function (origin, callback) {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin) return callback(null, true);
+app.use(
+    cors({
+        origin: function (origin, callback) {
+            // Allow requests with no origin (Postman, server-to-server, etc.)
+            if (!origin) return callback(null, true);
 
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
+            if (allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+
             console.log('❌ CORS blocked origin:', origin);
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Set-Cookie']
-}));
+            return callback(new Error('Not allowed by CORS'));
+        },
+        // If you are using JWT in Authorization header, cookies are not required.
+        // Keeping this false avoids cross-site cookie complexity.
+        credentials: false,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    })
+);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -57,7 +60,7 @@ if (!uri) {
     console.error('❌ MONGODB_URI is not defined in environment variables');
 }
 
-// PRODUCTION FIX: Log all requests for debugging
+// Log all requests (debug)
 app.use((req, res, next) => {
     console.log(`${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
     next();
@@ -74,8 +77,9 @@ async function connectToDatabase() {
     try {
         const client = await MongoClient.connect(uri, {
             connectTimeoutMS: 10000,
-            socketTimeoutMS: 45000,
+            socketTimeoutMS: 45000
         });
+
         const db = client.db('wealthflow');
         cachedClient = client;
         cachedDb = db;
@@ -88,9 +92,15 @@ async function connectToDatabase() {
 
         return { client, db };
     } catch (error) {
-        console.error("MongoDB Connection Error:", error);
+        console.error('MongoDB Connection Error:', error);
         throw error;
     }
+}
+
+function looksLikeBcryptHash(value) {
+    if (!value || typeof value !== 'string') return false;
+    // bcrypt hashes typically start with $2a$ / $2b$ / $2y$
+    return value.startsWith('$2a$') || value.startsWith('$2b$') || value.startsWith('$2y$');
 }
 
 // Initialize database with default data and indexes
@@ -98,7 +108,7 @@ async function initializeDatabase(db) {
     try {
         console.log('🔍 Checking database initialization...');
 
-        // Create unique indexes for email and employeeCode (code)
+        // Create unique indexes
         console.log('⚡ Creating unique indexes...');
         try {
             await db.collection('user_profiles').createIndex({ email: 1 }, { unique: true });
@@ -108,7 +118,7 @@ async function initializeDatabase(db) {
             console.log('ℹ️ Indexes might already exist or there are duplicates:', idxError.message);
         }
 
-        // STEP 1: Initialize user_profiles collection with default admin
+        // Default admin
         const adminEmail = 'admin@wealthflow.com';
         const existingAdmin = await db.collection('user_profiles').findOne({ email: adminEmail });
 
@@ -138,22 +148,27 @@ async function initializeDatabase(db) {
             await db.collection('user_profiles').insertOne(defaultAdminProfile);
             console.log('✅ Default admin profile created');
         } else {
-            // Migrating 'password' to 'passwordHash' if necessary
+            // If admin had legacy field password, migrate safely
             if (existingAdmin.password && !existingAdmin.passwordHash) {
-                console.log('🛡️ Migrating admin password to passwordHash...');
+                console.log('🛡️ Migrating admin password to passwordHash (safe)...');
+
+                const legacy = existingAdmin.password;
+                const nextHash = looksLikeBcryptHash(legacy) ? legacy : await bcrypt.hash(String(legacy), 10);
+
                 await db.collection('user_profiles').updateOne(
                     { _id: existingAdmin._id },
                     {
-                        $set: { passwordHash: existingAdmin.password },
-                        $unset: { password: "" }
+                        $set: { passwordHash: nextHash, updatedAt: new Date().toISOString() },
+                        $unset: { password: '' }
                     }
                 );
             }
         }
 
-        // STEP 2: Sync and Migrate existing users - normalize everything
+        // Normalize + migrate existing users
         console.log('🔄 Normalizing user data...');
         const allUsers = await db.collection('user_profiles').find({}).toArray();
+
         for (const user of allUsers) {
             const updates = {};
             let changed = false;
@@ -170,24 +185,28 @@ async function initializeDatabase(db) {
                 changed = true;
             }
 
-            // Migrate password to passwordHash
+            // Migrate password -> passwordHash safely
             if (user.password && !user.passwordHash) {
-                updates.passwordHash = user.password;
+                const legacy = String(user.password);
+                updates.passwordHash = looksLikeBcryptHash(legacy) ? legacy : await bcrypt.hash(legacy, 10);
                 changed = true;
             }
 
             if (changed) {
-                await db.collection('user_profiles').updateOne(
-                    { _id: user._id },
-                    {
-                        $set: { ...updates, updatedAt: new Date().toISOString() },
-                        ...(updates.passwordHash ? { $unset: { password: "" } } : {})
-                    }
-                );
+                const updateOps = {
+                    $set: { ...updates, updatedAt: new Date().toISOString() }
+                };
+
+                // Only unset password if we migrated it
+                if (updates.passwordHash) {
+                    updateOps.$unset = { password: '' };
+                }
+
+                await db.collection('user_profiles').updateOne({ _id: user._id }, updateOps);
             }
         }
 
-        // STEP 3: Check if config collection is empty
+        // Default config
         const configCount = await db.collection('config').countDocuments();
         if (configCount === 0) {
             const defaultConfig = {
@@ -196,8 +215,13 @@ async function initializeDatabase(db) {
                 companyExpensePct: 15,
                 levels: { 1: 15, 2: 15, 3: 15, 4: 15, 5: 15, 6: 5, 0: 20 },
                 levelNames: {
-                    1: 'Corporate House', 2: 'Partner Level 2', 3: 'Regional Level 3',
-                    4: 'Zonal Level 4', 5: 'Manager Level 5', 6: 'Relationship Manager (L6)', 0: 'Super Holding'
+                    1: 'Corporate House',
+                    2: 'Partner Level 2',
+                    3: 'Regional Level 3',
+                    4: 'Zonal Level 4',
+                    5: 'Manager Level 5',
+                    6: 'Relationship Manager (L6)',
+                    0: 'Super Holding'
                 },
                 scope: 'GLOBAL',
                 createdAt: new Date().toISOString(),
@@ -213,33 +237,46 @@ async function initializeDatabase(db) {
 }
 
 const VALID_COLLECTIONS = [
-    'clients', 'team', 'transactions', 'batches',
-    'amc_mappings', 'scheme_mappings', 'config', 'invoices', 'user_profiles'
+    'clients',
+    'transactions',
+    'batches',
+    'amc_mappings',
+    'scheme_mappings',
+    'config',
+    'invoices',
+    'user_profiles' // Consolidated from 'team'
 ];
 
-// Authentication Routes
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
-// API Routes
+// GET data
 app.get('/api/data', authenticate, async (req, res) => {
     try {
         const { db } = await connectToDatabase();
-        const { type } = req.query;
-        const userId = req.user.id;
-        const isAdmin = req.user.role === 'ADMIN';
+        let { type } = req.query;
+
+        const userId = req.user?.id;
+        const isAdmin = req.user?.role === 'ADMIN';
+
+        // Treat 'team' as 'user_profiles' for legacy support
+        if (type === 'team') type = 'user_profiles';
 
         if (!type || !VALID_COLLECTIONS.includes(type)) {
             return res.status(400).json({ error: 'Invalid or missing collection type' });
         }
 
-        // Security: hide passwords and sensitive data
-        const projection = (type === 'team' || type === 'user_profiles')
-            ? { password: 0, passwordHash: 0 }
-            : {};
+        // Security: user_profiles should only be accessed via /api/users
+        // but if accessed via /api/data, it MUST be admin-only
+        if (type === 'user_profiles' && !isAdmin) {
+            return res.status(403).json({ error: 'Unauthorized to access user profiles' });
+        }
 
         let filter = {};
-        if (isAdmin !== 'true' && userId) {
+
+        // Filter data based on user access levels if not Admin
+        if (!isAdmin && userId) {
             switch (type) {
                 case 'clients':
                     filter = {
@@ -254,33 +291,41 @@ app.get('/api/data', authenticate, async (req, res) => {
                         ]
                     };
                     break;
-                case 'transactions':
-                    const userClients = await db.collection('clients').find({
-                        $or: [
-                            { 'hierarchy.level0Id': userId },
-                            { 'hierarchy.level1Id': userId },
-                            { 'hierarchy.level2Id': userId },
-                            { 'hierarchy.level3Id': userId },
-                            { 'hierarchy.level4Id': userId },
-                            { 'hierarchy.level5Id': userId },
-                            { 'hierarchy.level6Id': userId }
-                        ]
-                    }).toArray();
-                    const clientIds = userClients.map(c => c.id);
+
+                case 'transactions': {
+                    const userClients = await db
+                        .collection('clients')
+                        .find({
+                            $or: [
+                                { 'hierarchy.level0Id': userId },
+                                { 'hierarchy.level1Id': userId },
+                                { 'hierarchy.level2Id': userId },
+                                { 'hierarchy.level3Id': userId },
+                                { 'hierarchy.level4Id': userId },
+                                { 'hierarchy.level5Id': userId },
+                                { 'hierarchy.level6Id': userId }
+                            ]
+                        })
+                        .toArray();
+
+                    const clientIds = userClients.map((c) => c.id);
                     filter = { mappedClientId: { $in: clientIds } };
                     break;
+                }
+
                 case 'invoices':
-                    filter = { userId: userId };
-                    break;
                 case 'batches':
                     filter = { userId: userId };
                     break;
+
                 default:
                     filter = {};
             }
         }
+
         const options = {};
-        if (type === 'team' || type === 'user_profiles') {
+        // Safety: ensure passwords never leak
+        if (type === 'user_profiles') {
             options.projection = { passwordHash: 0, password: 0 };
         }
 
@@ -298,7 +343,7 @@ app.post('/api/data', authenticate, async (req, res) => {
         const { db } = await connectToDatabase();
         const { collection, payload, upsertField } = req.body;
 
-        // Block user_profiles and team from generic POST to ensure proper hashing/validation
+        // Block user collections from generic POST
         if (collection === 'user_profiles' || collection === 'team') {
             return res.status(403).json({ error: 'Use dedicated user management endpoints' });
         }
@@ -306,11 +351,12 @@ app.post('/api/data', authenticate, async (req, res) => {
         if (!collection || !VALID_COLLECTIONS.includes(collection) || !payload) {
             return res.status(400).json({ error: 'Invalid collection or missing payload' });
         }
+
         const now = new Date().toISOString();
         const filterKey = upsertField || 'id';
 
         if (Array.isArray(payload)) {
-            const operations = payload.map(item => {
+            const operations = payload.map((item) => {
                 const { _id, ...updateData } = item;
                 return {
                     updateOne: {
@@ -320,6 +366,7 @@ app.post('/api/data', authenticate, async (req, res) => {
                     }
                 };
             });
+
             const result = await db.collection(collection).bulkWrite(operations);
             res.status(200).json({
                 success: true,
@@ -328,11 +375,13 @@ app.post('/api/data', authenticate, async (req, res) => {
         } else {
             const filterValue = payload[filterKey] || payload.id;
             const { _id, ...cleanPayload } = payload;
+
             await db.collection(collection).updateOne(
                 { [filterKey]: filterValue },
                 { $set: { ...cleanPayload, updatedAt: now }, $setOnInsert: { createdAt: now } },
                 { upsert: true }
             );
+
             res.status(200).json({ success: true });
         }
     } catch (error) {
@@ -341,6 +390,7 @@ app.post('/api/data', authenticate, async (req, res) => {
     }
 });
 
+// Delete data
 app.delete('/api/data', authenticate, async (req, res) => {
     try {
         const { db } = await connectToDatabase();
@@ -356,8 +406,14 @@ app.delete('/api/data', authenticate, async (req, res) => {
             return res.status(200).json({ success: true });
         }
 
-        if (type && id && VALID_COLLECTIONS.includes(type)) {
-            if (type === 'user_profiles' || type === 'team') {
+        if (type && id) {
+            const collectionType = type === 'team' ? 'user_profiles' : type;
+
+            if (!VALID_COLLECTIONS.includes(collectionType)) {
+                return res.status(400).json({ error: 'Invalid type' });
+            }
+
+            if (collectionType === 'user_profiles') {
                 await db.collection('user_profiles').updateOne(
                     { id: id },
                     { $set: { isActive: false, updatedAt: new Date().toISOString() } }
@@ -365,21 +421,21 @@ app.delete('/api/data', authenticate, async (req, res) => {
                 return res.status(200).json({ success: true, message: 'User marked as inactive' });
             }
 
-            if (type === 'batches') {
+            if (collectionType === 'batches') {
                 await db.collection('transactions').deleteMany({ batchId: id });
-                // We don't delete auto-clients here to keep it simple and safe for now
             }
 
-            await db.collection(type).deleteOne({ id: id });
+            await db.collection(collectionType).deleteOne({ id: id });
             return res.status(200).json({ success: true });
         }
+
         res.status(400).json({ error: 'Invalid parameters' });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-// SERVE FRONTEND (Production)
+// Serve frontend
 const frontendPath = path.join(__dirname, '../frontend/dist');
 app.use(express.static(frontendPath));
 

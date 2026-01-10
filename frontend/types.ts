@@ -44,9 +44,12 @@ export interface Address {
 export interface TeamMember {
   id: string;
   name: string;
+  fullName?: string; // Backend sync
   code: string; // ARN or Emp Code
+  employeeCode?: string; // Backend sync
   role: Role;
   level: number; // 0-6
+  hierarchyLevel?: number; // Backend sync
   email?: string;
   password?: string; // Mock password
   bankDetails?: BankDetails;

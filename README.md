@@ -74,7 +74,7 @@ Before you begin, ensure you have:
 - **npm** (comes with Node.js)
 - **MongoDB Atlas Account** (free tier available) - [Sign up](https://www.mongodb.com/cloud/atlas)
 - **Git** (for version control) - [Download](https://git-scm.com/)
-- **Vercel Account** (optional, for deployment) - [Sign up](https://vercel.com/)
+- **Render Account** (recommended, for deployment) - [Sign up](https://render.com/)
 
 ---
 
@@ -96,7 +96,7 @@ npm install
 This installs all required packages:
 - React, TypeScript, Vite (Frontend)
 - MongoDB driver (Database)
-- Vercel CLI (Development & Deployment)
+- Express, JWT, BcryptJS (Backend)
 - Recharts, jsPDF, XLSX (Utilities)
 
 ---
@@ -129,15 +129,8 @@ Run the initialization script to create all required collections and indexes:
 npm run init-db
 ```
 
-This creates 8 collections:
-- `clients` - Client information and hierarchy
-- `team` - Team members and roles
-- `transactions` - Brokerage transactions
-- `batches` - Import batch tracking
-- `amc_mappings` - AMC name standardization
-- `scheme_mappings` - Scheme name standardization
-- `config` - Global configuration
-- `invoices` - Generated invoices
+This creates the core collections including:
+- `clients`, `user_profiles`, `transactions`, `batches`, `amc_mappings`, `scheme_mappings`, `config`, `invoices`.
 
 ---
 
@@ -145,33 +138,25 @@ This creates 8 collections:
 
 ### Development Mode
 
+WealthFlow uses a unified server architecture.
+
+**1. Start Backend Server**
 ```bash
-npm run dev
+npm run backend
 ```
+*Runs Express server on http://localhost:3001*
 
-This starts:
-- **Vite dev server** (Frontend)
-- **Vercel serverless functions** (API routes)
-- **Hot module replacement** (Auto-reload on changes)
-
-**First-time setup:** Vercel CLI will prompt you to:
-1. Login to Vercel (creates a free account)
-2. Link your project
-3. Accept default settings (just press Enter)
-
-### Alternative: Vite Only (No API)
-
+**2. Start Frontend Dev**
 ```bash
-npm run dev:vite
+npm run frontend
 ```
+*Runs Vite dev server on http://localhost:5173*
 
-⚠️ **Warning:** This runs only the frontend without API support. Data won't persist.
-
-### Production Build
+### Production Mode
 
 ```bash
 npm run build
-npm run preview
+npm run backend # Serves frontend assets from /frontend/dist
 ```
 
 ---
@@ -229,9 +214,9 @@ Frontend:
 └── Recharts (Charts)
 
 Backend:
-├── Node.js
-├── Vercel Serverless Functions
-└── MongoDB Driver 6.5.0
+├── Node.js / Express
+├── JWT Authentication
+└── MongoDB Driver 6.21.0
 
 Database:
 └── MongoDB Atlas
@@ -262,14 +247,14 @@ Utilities:
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────┐
-│              Vercel Serverless API                       │
-│              /api/data                                   │
+│              Unified Node.js / Express API               │
+│              (Routes: /api/auth, /api/users, /api/data)  │
 └────────────────────┬────────────────────────────────────┘
                      │
                      ▼
 ┌─────────────────────────────────────────────────────────┐
 │              MongoDB Atlas                               │
-│              (8 Collections)                             │
+│              (Collections: user_profiles, clients, etc.) │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -277,7 +262,7 @@ Utilities:
 
 **1. User Login**
 ```
-User enters credentials → Validate against team collection → 
+User enters credentials → Validate against user_profiles collection → 
 Save session to localStorage → Load user-specific data → 
 Show dashboard
 ```
@@ -302,7 +287,7 @@ Update React state → Refresh UI → Data persists permanently
 ### First-Time Setup
 
 1. **Login as Admin**
-   - Default credentials are in the team collection
+   - Default credentials are in the user_profiles collection
    - Or create a new admin user in Settings
 
 2. **Configure Hierarchy Levels**
@@ -349,15 +334,29 @@ Update React state → Refresh UI → Data persists permanently
 
 ---
 
+## 🚀 Deployment (Render)
+
+### Deploy to Render (Recommended)
+
+1. **Connect GitHub**: Import your repository to Render.
+2. **Create Web Service**:
+   - **Environment**: Node
+   - **Build Command**: `npm run install-all && npm run build`
+   - **Start Command**: `npm run backend`
+3. **Environment Variables**:
+   - `MONGODB_URI`: Your MongoDB connection string.
+   - `JWT_SECRET`: A long random string for authentication.
+   - `FRONTEND_URL`: The URL of your Render service (e.g., `https://wealthflowbms.onrender.com`).
+
+---
+
 ## 🐛 Troubleshooting
 
-### Issue: Data disappears on refresh
+### Issue: API connection failure
 
-**Cause:** Not using Vercel dev server  
-**Solution:**
+**Solution:** Ensure the backend is running.
 ```bash
-# Stop current server (Ctrl+C)
-npm run dev  # Use this, not npm run dev:vite
+npm run backend
 ```
 
 ### Issue: "Failed to connect to MongoDB"
@@ -368,15 +367,6 @@ npm run dev  # Use this, not npm run dev:vite
 3. Whitelist your IP in MongoDB Atlas Network Access
 4. Test connection string in MongoDB Compass
 
-### Issue: "Cannot find module './lib/mongodb'"
-
-**Cause:** Incorrect import path  
-**Solution:** Already fixed in latest version. Pull latest code:
-```bash
-git pull origin main
-```
-
-
 ### Issue: User logged out on refresh
 
 **Cause:** Old version without session persistence  
@@ -385,61 +375,6 @@ git pull origin main
 # In browser DevTools (F12)
 Application → Local Storage → Clear All
 ```
-
-### Issue: API routes returning 404
-
-**Cause:** Not using Vercel dev server  
-**Solution:**
-```bash
-npm run dev  # This enables API routes
-```
-
-### Issue: Vercel CLI not found
-
-**Solution:**
-```bash
-npm install  # Reinstall dependencies
-```
-
----
-
-## 🚀 Deployment
-
-### Deploy to Vercel (Recommended)
-
-#### Option 1: Automatic Deployment
-
-1. Push your code to GitHub
-2. Go to [Vercel Dashboard](https://vercel.com/dashboard)
-3. Click "New Project"
-4. Import your GitHub repository
-5. Add environment variable: `MONGODB_URI`
-6. Click "Deploy"
-
-#### Option 2: Manual Deployment
-
-```bash
-# Build the project
-npm run build
-
-# Deploy to Vercel
-vercel --prod
-```
-
-### Environment Variables in Production
-
-In Vercel Dashboard:
-1. Go to Project Settings → Environment Variables
-2. Add: `MONGODB_URI` = `your_mongodb_connection_string`
-3. Redeploy the project
-
-### Post-Deployment
-
-1. Test the deployed URL
-2. Login and verify data persistence
-3. Import test data
-4. Generate a test report
-5. Share the URL with your team
 
 ---
 
