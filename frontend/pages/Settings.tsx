@@ -325,7 +325,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                             </div>
                         </div>
                         <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
-                            {filteredTeam.map(member => (
+                            {filteredTeam.map((member: TeamMember) => (
                                 <button
                                     key={member.id}
                                     onClick={() => handleSelectUserForOverride(member)}
@@ -369,7 +369,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser }) => {
                                                         <input
                                                             type="number"
                                                             value={userOverrideLevels[lvl] || 0}
-                                                            onChange={e => handleUserLevelChange(lvl, e.target.value)}
+                                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleUserLevelChange(lvl, e.target.value)}
                                                             className="w-20 p-2 text-right font-black text-blue-600 focus:outline-none"
                                                         />
                                                         <span className="px-3 bg-slate-100 border-l text-slate-400 font-bold">%</span>

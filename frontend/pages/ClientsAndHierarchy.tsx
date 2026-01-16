@@ -463,8 +463,9 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                   <td className="px-6 py-4">
                     <button
                       onClick={() => handleCopyCredentials(member)}
-                      className={`flex items-center px-2 py-1 rounded-md text-xs font-bold transition ${copiedId === member.id ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                        }`}
+                      className={`flex items-center px-2 py-1 rounded-md text-xs font-bold transition ${
+                        copiedId === member.id ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                      }`}
                     >
                       {copiedId === member.id ? <Check className="w-3 h-3 mr-1" /> : <Copy className="w-3 h-3 mr-1" />}
                       {copiedId === member.id ? 'Copied' : 'Share ID'}
@@ -482,8 +483,9 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
                       <button
                         onClick={() => handleDeleteTeamMember(member)}
                         disabled={member.id === currentUser.id}
-                        className={`p-2 rounded-full transition ${member.id === currentUser.id ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
-                          }`}
+                        className={`p-2 rounded-full transition ${
+                          member.id === currentUser.id ? 'text-slate-200 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'
+                        }`}
                         title={member.id === currentUser.id ? 'Cannot delete yourself' : 'Delete User'}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -595,19 +597,21 @@ export const ClientsAndHierarchy: React.FC<ClientsAndHierarchyProps> = ({ curren
             <div className="space-y-2">
               <button
                 onClick={() => setStandardizeType('amc')}
-                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition ${standardizeType === 'amc'
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition ${
+                  standardizeType === 'amc'
                     ? 'bg-blue-50 text-blue-700 border border-blue-100 shadow-sm shadow-blue-50'
                     : 'hover:bg-slate-50 text-slate-600'
-                  }`}
+                }`}
               >
                 Map AMCs
               </button>
               <button
                 onClick={() => setStandardizeType('scheme')}
-                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition ${standardizeType === 'scheme'
+                className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition ${
+                  standardizeType === 'scheme'
                     ? 'bg-blue-50 text-blue-700 border border-blue-100 shadow-sm shadow-blue-50'
                     : 'hover:bg-slate-50 text-slate-600'
-                  }`}
+                }`}
               >
                 Map Schemes
               </button>

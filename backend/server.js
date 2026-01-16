@@ -8,6 +8,8 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import { authenticate } from './middleware/auth.js';
+import passport from 'passport';
+import configurePassport from './config/passport.js';
 
 // Load environment variables
 dotenv.config();
@@ -53,6 +55,7 @@ app.use(
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
 
 // MongoDB connection
 const uri = process.env.MONGODB_URI;
@@ -86,6 +89,9 @@ async function connectToDatabase() {
 
         // Initialize database
         await initializeDatabase(db);
+
+        // Configure Passport
+        configurePassport(passport, db);
 
         // Make db available to routes
         app.locals.db = db;

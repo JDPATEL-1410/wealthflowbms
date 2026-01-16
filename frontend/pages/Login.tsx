@@ -1,8 +1,19 @@
-
 import React, { useState } from 'react';
-import { PieChart, Mail, Lock, Key, ArrowRight, ShieldCheck, RefreshCw, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import {
+  PieChart,
+  Mail,
+  Lock,
+  Key,
+  ArrowRight,
+  ShieldCheck,
+  RefreshCw,
+  AlertCircle,
+  Eye,
+  EyeOff
+} from 'lucide-react';
 import { TeamMember } from '../types';
 import { useData } from '../contexts/DataContext';
+import { API_BASE_URL } from '../config/apiConfig';
 
 interface LoginProps {
   onLogin: (user: TeamMember) => void;
@@ -12,56 +23,87 @@ type AuthView = 'LOGIN' | 'FORGOT' | 'OTP' | 'RESET';
 
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const { isOnline, loading } = useData();
+
   const [view, setView] = useState<AuthView>('LOGIN');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Forgot Password States
+  // Forgot Password States (simulated)
   const [otp, setOtp] = useState('');
   const [generatedOtp, setGeneratedOtp] = useState('');
+
+  const TOKEN_KEY = 'wealthflow_token';
+
+  async function safeJson(res: Response) {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) return await res.json();
+    const text = await res.text();
+    return { error: text || 'Request failed' };
+  }
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!isOnline) {
+      setError('System is currently offline. Please try again shortly.');
+      return;
+    }
+
+    const id = identifier.trim();
+    if (!id) {
+      setError('Please enter your Employee ID or Email.');
+      return;
+    }
+
+    // IMPORTANT: do not trim password (it can be a valid character)
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
     setIsAuthenticating(true);
 
     try {
-      console.log('🔐 Attempting login...');
+      const url = `${API_BASE_URL}/api/auth/login`;
 
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
         body: JSON.stringify({
-          identifier: identifier.trim(),
-          password: password.trim()
+          identifier: id,
+          password: password
         })
       });
 
-      const data = await response.json();
+      const data = await safeJson(response);
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data?.error || 'Login failed');
       }
 
-      if (data.success && data.token && data.user) {
-        console.log('✅ Login successful:', data.user);
-
+      if (data?.success && data?.token && data?.user) {
         // Store JWT token
-        localStorage.setItem('wealthflow_token', data.token);
+        localStorage.setItem(TOKEN_KEY, String(data.token));
 
-        // Create TeamMember object from authenticated user
+        const u = data.user;
+
         const teamMember: TeamMember = {
-          id: data.user.id,
-          name: data.user.name || data.user.fullName,
-          code: data.user.code || data.user.employeeCode || '',
-          role: data.user.role,
-          level: data.user.level || data.user.hierarchyLevel,
-          email: data.user.email,
-          password: '',
-          bankDetails: data.user.bankDetails || {
+          id: u.id,
+          name: u.name || u.fullName || '',
+          code: u.code || u.employeeCode || '',
+          role: u.role,
+          level: u.level ?? u.hierarchyLevel,
+          email: u.email,
+          password: '', // never store password on frontend state
+          bankDetails: u.bankDetails || {
             accountName: '',
             accountNumber: '',
             bankName: '',
@@ -69,14 +111,12 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           }
         };
 
-        // Call parent onLogin with authenticated user
         onLogin(teamMember);
       } else {
         setError('Login failed. Please try again.');
       }
-    } catch (error: any) {
-      console.error('❌ Login error:', error);
-      setError(error.message || 'Unable to connect to authentication service. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'Unable to connect to authentication service. Please try again.');
     } finally {
       setIsAuthenticating(false);
     }
@@ -85,19 +125,28 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    // OTP recovery is currently simulated
+
+    const id = identifier.trim();
+    if (!id) {
+      setError('Please enter your Employee ID or Email.');
+      return;
+    }
+
+    // OTP recovery is simulated
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setGeneratedOtp(code);
-    console.log(`[AUTH SERVICE] Recovery OTP for ${identifier}: ${code}`);
-    alert(`Recovery code has been simulated for ${identifier}. Check console for OTP: ${code}`);
+    console.log(`[AUTH SERVICE] Recovery OTP for ${id}: ${code}`);
+    alert(`Recovery is simulated. Check console for OTP: ${code}`);
     setView('OTP');
   };
 
   const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
     if (otp === generatedOtp) {
-      alert('Password reset functionality is currently restricted. Please contact Administrator.');
+      alert('Password reset is currently restricted. Please contact Administrator.');
       setView('LOGIN');
+      setOtp('');
+      setGeneratedOtp('');
     } else {
       setError('Invalid code.');
     }
@@ -110,7 +159,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-200">
             <PieChart className="w-7 h-7 text-white" />
           </div>
-          <span className="text-3xl font-black text-slate-900 tracking-tighter uppercase">WealthFlow</span>
+          <span className="text-3xl font-black text-slate-900 tracking-tighter uppercase">
+            WealthFlow
+          </span>
         </div>
 
         <div className="bg-white rounded-3xl shadow-2xl shadow-slate-200 overflow-hidden border border-slate-100">
@@ -130,7 +181,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Employee ID or Email</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                      Employee ID or Email
+                    </label>
                     <div className="relative">
                       <Mail className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
                       <input
@@ -140,13 +193,16 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         onChange={(e) => setIdentifier(e.target.value)}
                         className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium"
                         placeholder="ID or registered email"
+                        autoComplete="username"
                       />
                     </div>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Password</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
+                        Password
+                      </label>
                       <button
                         type="button"
                         onClick={() => setView('FORGOT')}
@@ -155,20 +211,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                         Recovery?
                       </button>
                     </div>
+
                     <div className="relative">
                       <Lock className="absolute left-4 top-3.5 w-4 h-4 text-slate-400" />
                       <input
-                        type={showPassword ? "text" : "password"}
+                        type={showPassword ? 'text' : 'password'}
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full pl-12 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-medium"
                         placeholder="••••••••"
+                        autoComplete="current-password"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -211,7 +270,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 )}
 
                 <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">ID or Email</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">
+                    ID or Email
+                  </label>
                   <input
                     type="text"
                     required
@@ -222,8 +283,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
 
                 <div className="flex flex-col space-y-3">
-                  <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition">Request Code</button>
-                  <button type="button" onClick={() => setView('LOGIN')} className="w-full text-slate-500 font-bold py-2 text-sm hover:text-slate-900 transition">Back to Sign In</button>
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition"
+                  >
+                    Request Code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView('LOGIN')}
+                    className="w-full text-slate-500 font-bold py-2 text-sm hover:text-slate-900 transition"
+                  >
+                    Back to Sign In
+                  </button>
                 </div>
               </form>
             )}
@@ -257,8 +329,18 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
 
                 <div className="flex flex-col space-y-3 text-center">
-                  <button type="submit" className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition">Verify Code</button>
-                  <p className="text-xs text-slate-400">Didn't receive it? <button type="button" onClick={handleSendOtp} className="text-blue-600 font-bold">Resend</button></p>
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-700 transition"
+                  >
+                    Verify Code
+                  </button>
+                  <p className="text-xs text-slate-400">
+                    Didn't receive it?{' '}
+                    <button type="button" onClick={handleSendOtp} className="text-blue-600 font-bold">
+                      Resend
+                    </button>
+                  </p>
                 </div>
               </form>
             )}
